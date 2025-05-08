@@ -4,6 +4,8 @@ A repository for Robins Home Assistant AppDaemon apps
 
 **Python venv Setup (Windows)**
 
+Using Python version 3.11.
+
 Create the virtual environment:
 
    ```powershell
