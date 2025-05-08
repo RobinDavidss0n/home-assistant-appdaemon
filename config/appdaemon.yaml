@@ -1,0 +1,27 @@
+---
+appdaemon:
+    latitude: 57.78145
+    longitude: 14.15618
+    elevation: 104
+    time_zone: Europe/Stockholm
+    plugins:
+        HASS:
+            type: hass
+            ha_url: http://192.168.0.198:8123/
+            # works in runtime so ignore the error
+            token: !env_var HASS_TOKEN
+http:
+    url: http://0.0.0.0:5050
+admin:
+api:
+hadashboard:
+logs:
+    main_log:
+        filename: logs/appdaemon.log
+        log_level: INFO
+    error_log:
+        filename: logs/error.log
+        log_level: WARNING
+    access_log:
+        filename: logs/access.log
+        log_level: INFO

@@ -1,0 +1,47 @@
+---
+hello_world:
+  module: hello
+  class: HelloWorld
+# climat_controller:
+#   module: climat_controller
+#   class: CameraPatrol
+#   camera_name: camera-2
+#   is_active_ent: input_boolean.is_climat_controller_active
+#   bedroom_temp_ent: sensor.bedroom_temp_humid_sensor_temperature
+#   office_temp_ent: sensor.office_temp_humid_sensor_temperature
+#   living_room_temp_ent: sensor.living_room_temp_humid_sensor_temperature
+#   debug: True
+
+# camera_patrol_camera_1:
+#   module: camera_patrol
+#   class: CameraPatrol
+#   camera_name: camera-1
+#   is_patroling_ent: input_boolean.camera_1_is_patroling
+#   is_in_privacy_ent: input_boolean.camera_1_is_in_privacy
+#   motion_alarm_ent: binary_sensor.camera_1_motion_alarm
+#   switch_privacy_entity: switch.camera_1_privacy
+#   move_to_preset_ent: select.camera_1_move_to_preset
+#   presets:
+#     - Hall
+#     - Toilet
+#     - Living Room
+#     - Living Room 2
+#     - Sams Tower
+#   movement_timer: 45
+#   debug: True
+
+# camera_patrol_camera_2:
+#   module: camera_patrol
+#   class: CameraPatrol
+#   camera_name: camera-2
+#   is_patroling_ent: input_boolean.camera_2_is_patroling
+#   is_in_privacy_ent: input_boolean.camera_2_is_in_privacy
+#   motion_alarm_ent: binary_sensor.camera_2_motion_alarm
+#   switch_privacy_entity: switch.camera_2_privacy
+#   move_to_preset_ent: select.camera_2_move_to_preset
+#   presets:
+#     - Cat Feeder
+#     - Main
+#     - Table
+#   movement_timer: 45
+#   debug: True
