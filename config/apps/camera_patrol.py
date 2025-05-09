@@ -110,7 +110,7 @@ class CameraPatrol(hass.Hass):
 
                     if(self.camera_name == "camera-1"):
                         await self.call_service(
-                            "notify/mobile_app_robins_s22",
+                            "notify/mobile_app_robins_oneplus_13",
                             title="Camera patrol",
                             message="Sleep state - Door not closed, stopping.",
                             data= { "ttl": 0, "priority": "high" }
