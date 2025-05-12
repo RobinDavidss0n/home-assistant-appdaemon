@@ -1,7 +1,9 @@
 import appdaemon.plugins.hass.hassapi as hass
+from support import Support
 from enum import Enum
 
-class TempSensors(Enum):
+
+class TempSensorsLocation(Enum):
     BEDROOM = "bedroom"
     OFFICE = "office"
     LIVING_ROOM = "living_room"
@@ -17,12 +19,13 @@ class OnOff(Enum):
     ON = "on"
     OFF = "off"
 
-class BaseClimateControl(hass.Hass):
+class BaseClimateControl(Support):
 
     async def initialize(self):
 
-        self.polling_interval = 5
-        self.error_restart_interval = 5
+        self.log("Base initing..")
+
+        self.error_restart_interval = 10
 
         self.temp_ent_ending = "_temp_humid_sensor_device_temperature"
 
@@ -30,25 +33,22 @@ class BaseClimateControl(hass.Hass):
         self.ac_ext_fan_ent = "switch.smart_socket_4"
         self.bedroom_heater_ent = "switch.smart_socket_1"
 
-        self.debug = bool(self.args.get("debug", True))
+        self.debug = bool(self.args.get("debug", False))
+        self.dev_logs = bool(self.args.get("dev_logs", False))
         self.is_active_ent  = self.args.get("is_active_ent")
 
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
         
-        if(self.is_active): 
+        self.dev_log("is_active", self.is_active)
+
+        if(self.is_active):
             self.create_task(self.start())
 
 
-    def dev_log(self, msg, args=None):
-        if self.debug:
-            if args is None:
-                self.log(f"--> {msg}")
-            else:
-                self.log(f"--> {msg}: {args}")
-
-
     def on_is_active_ent_change(self, entity, attribute, old, new, kwargs):
+
+        self.dev_log(f"Is active change from '{old}' to '{new}'")
 
         if new == "on":
             self.is_active = True
@@ -58,16 +58,21 @@ class BaseClimateControl(hass.Hass):
     
 
     async def start(self):
-        self.dev_log("(base class) > Turning on climate controller")
+        self.dev_log("Turning on climate controller")
+
+        self.polling_interval = float(await self.get_state("input_number.climate_control_polling_interval"))
+
+        self.dev_log("self: ", self)
 
         try:
             await self.base_loop()
         except Exception as e:
-            self.log("(base class) > ClimateController -> Error caught\n", level="ERROR", exc_info=True)
-            self.log("(base class) > Starting again in 5 seconds....")
+            self.log("Error caught\n", level="ERROR", exc_info=True)
+            self.log("Starting again in 5 seconds....")
 
-            await self.sleep(self.error_restart_interval)
-            self.create_task(self.start())
+            if(not self.debug):
+                await self.sleep(self.error_restart_interval)
+                self.create_task(self.start())
 
 
     async def base_loop(self):
@@ -80,7 +85,10 @@ class BaseClimateControl(hass.Hass):
     async def loop_logic(self):
         return
     
-    async def get_temp(self, sensor: TempSensors):
+    async def send_notification(self, msg):
+        await self.send_mobile_notification(f"Climate Control", msg)
+
+    async def get_temp(self, sensor: TempSensorsLocation):
         return float(await self.get_state(f"sensor.{sensor.value}{self.temp_ent_ending}"))
 
     async def set_ac_mode(self, mode: ACModes):
@@ -92,12 +100,9 @@ class BaseClimateControl(hass.Hass):
     async def set_bedroom_heater(self, mode: OnOff):
         await self.call_service(f"switch/turn_{mode.value}", entity_id=self.bedroom_heater_ent)
 
-    async def send_notification(self, msg):
-        await self.call_service(
-            "notify/mobile_app_robins_oneplus_13",
-            title="Ordinary Climate Control",
-            message=msg,
-            data= { "ttl": 0, "priority": "high" }
-        )
+    async def start_cooling(self):
 
-    
+        outside_temp = await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE)
+        
+        #TODO make the starting and stopping of cooling
+        #if(outside_temp):

@@ -1,17 +1,14 @@
 ---
-hello_world:
-  module: hello
-  class: HelloWorld
-# climat_controller:
-#   module: climat_controller
-#   class: CameraPatrol
-#   camera_name: camera-2
-#   is_active_ent: input_boolean.is_climat_controller_active
-#   bedroom_temp_ent: sensor.bedroom_temp_humid_sensor_temperature
-#   office_temp_ent: sensor.office_temp_humid_sensor_temperature
-#   living_room_temp_ent: sensor.living_room_temp_humid_sensor_temperature
-#   debug: True
+# hello_world:
+#   module: hello
+#   class: HelloWorld
 
+ordinary_climate-control:
+  module: ordinary_climat_control
+  class: OrdinaryClimateControl
+  is_active_ent: input_boolean.ordinary_climate_control
+  debug: True
+  dev_logs: True
 # camera_patrol_camera_1:
 #   module: camera_patrol
 #   class: CameraPatrol
