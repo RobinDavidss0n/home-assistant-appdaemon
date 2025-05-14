@@ -13,10 +13,13 @@ class Support(hass.Hass):
 	
     def get_timestamp_in_seconds(self):
         return int(datetime.now().timestamp())
+    
+    def get_timestamp(self):
+        return datetime.now().timestamp()
 
     def dev_log(self, msg, args=None):
         if self.dev_logs:
             if args is None:
-                self.log(f"--> {msg}")
+                self.log(f"-> {msg}")
             else:
-                self.log(f"--> {msg}: {args}")
+                self.log(f"-> {msg}: {args}")

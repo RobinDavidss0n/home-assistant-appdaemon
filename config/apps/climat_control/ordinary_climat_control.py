@@ -10,7 +10,7 @@ class TempWarningType(Enum):
 @dataclass
 class TempWarningTrackerArea:
 	last_warning_sent: Optional[int] = None #timestamp
-	temp_normilised_after_last_warning: bool = True
+	temp_normalised_after_last_warning: bool = True
 
 @dataclass
 class TempWarningTracker:
@@ -27,13 +27,17 @@ class OrdinaryClimateControl(BaseClimateControl):
 		self.cold_temp_warning_tracker = TempWarningTracker()
 		self.warm_temp_warning_tracker = TempWarningTracker()
 
+		# Debug tools
 		self.counter = 0
 		self.counting_down = False
+		self.debug_fake_temps = bool(self.args.get("debug_fake_temps", False))
 
-		self.variability 					= float(await self.get_state("input_number.ordinary_climate_control_variability_threshold"))
+		self.variability_threshold 			= float(await self.get_state("input_number.ordinary_climate_control_variability_threshold"))
 		self.cold_warning_threshold 		= float(await self.get_state("input_number.ordinary_climate_control_temp_warning_threshold_cold"))
 		self.warm_warning_threshold 		= float(await self.get_state("input_number.ordinary_climate_control_temp_warning_threshold_warm"))
 		self.repeated_warnings_block_timer 	= float(await self.get_state("input_number.ordinary_climate_control_repeated_warnings_block_timer"))
+		
+		self.temp_warnings = await self.get_state("input_boolean.ordinary_climate_control_temp_warnings") == "on"
 		
 		await super().start()
 
@@ -41,43 +45,54 @@ class OrdinaryClimateControl(BaseClimateControl):
 	async def loop_logic(self):
 
 		self.dev_log("Checking temp...")
-		if(self.debug):
+		if(self.debug_fake_temps):
 			self.dev_log("counter: ", self.counter)
 
-		self.outside_forest_side_temp = float(await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE))
+		rooms = [
+			TempSensorsLocation.BEDROOM,
+			TempSensorsLocation.OFFICE,
+			TempSensorsLocation.LIVING_ROOM
+		]
 
-		total_temp_diff = 0
+		diffs = []
+		for room in rooms:
+			diffs.append(await self.get_diff_temp_in_room(room))
 
-		total_temp_diff += await self.get_diff_temp_in_area(TempSensorsLocation.BEDROOM)
-		total_temp_diff += await self.get_diff_temp_in_area(TempSensorsLocation.OFFICE)
-		total_temp_diff += await self.get_diff_temp_in_area(TempSensorsLocation.LIVING_ROOM)
+		highest_diff_index = 0
+		for i in range(1, len(diffs)):
+			if diffs[i] > diffs[highest_diff_index]:
+				highest_diff_index = i
 
-		if(abs(total_temp_diff) < self.variability):
-			self.dev_log("Temp diff not great enough, check done.")
-			return
+		warmest_room = rooms[highest_diff_index]
+		warmest_rooms_diff = diffs[highest_diff_index]
 		
-		#TODO adjust temp accordeling
+		self.dev_log("Warmest room", warmest_room.value)
+		self.dev_log("Warmest roms diff", warmest_rooms_diff)
+
+		if(warmest_rooms_diff > self.variability_threshold):
+			self.dev_log("Warmest room too hot, turning on cooling.")
+			await self.start_cooling()		
+		else:
+			self.dev_log("Warmest room not hot enough, turning off cooling.")
+			await self.stop_cooling()		
 	
 
-	async def get_diff_temp_in_area(self, area: TempSensorsLocation):
-
-		self.dev_log(f"Getting temp dif in > {area.value}")
+	async def get_diff_temp_in_room(self, area: TempSensorsLocation):
 
 		target_temp = float(await self.get_state(f"input_number.ordinary_climate_control_target_temp_{area.value}"))
 		
-		if(self.debug):
-			current_temp = 15 + self.counter
+		if(self.debug_fake_temps):
+			current_temp = float(15 + self.counter)
 		else:
 			current_temp = await self.get_temp(area)
 
 		diff = current_temp - target_temp
 		abs_temp_diff = abs(diff)
 
-		self.dev_log("current_temp =", current_temp)
-		self.dev_log("Temp diff =", diff)
+		self.dev_log(f"{area.value}: current_temp = {current_temp}, diff = {diff}")
 
-		if(self.debug):
-			self.debug_conter()
+		if(self.debug_fake_temps):
+			self.debug_counter()
 
 		# Too warm
 		if(diff > 0 and abs_temp_diff > self.warm_warning_threshold):
@@ -86,16 +101,16 @@ class OrdinaryClimateControl(BaseClimateControl):
 		elif(diff < 0 and abs_temp_diff > self.cold_warning_threshold):
 			await self.send_temp_warning(TempWarningType.COLD, area)
 		else:
-			cast(TempWarningTrackerArea, getattr(self.warm_temp_warning_tracker,area.value)).temp_normilised_after_last_warning = True
-			cast(TempWarningTrackerArea, getattr(self.cold_temp_warning_tracker,area.value)).temp_normilised_after_last_warning = True
+			cast(TempWarningTrackerArea, getattr(self.warm_temp_warning_tracker,area.value)).temp_normalised_after_last_warning = True
+			cast(TempWarningTrackerArea, getattr(self.cold_temp_warning_tracker,area.value)).temp_normalised_after_last_warning = True
 
 		return diff
 
 
 	async def send_temp_warning(self, type: TempWarningType, area: TempSensorsLocation):
 
-		if(await self.get_state("input_boolean.ordinary_climate_control_temp_warnings") == "off"):
-			self.dev_log("send_temp_warning: Warnings disabled, returning.")
+		if(not self.temp_warnings):
+			self.dev_log("Warnings disabled.")
 			return
 		
 		tracker: TempWarningTrackerArea = getattr(self.warm_temp_warning_tracker, area.value)
@@ -110,14 +125,12 @@ class OrdinaryClimateControl(BaseClimateControl):
 			
 			seconds_since_last_warning = timestamp - tracker.last_warning_sent
 
-			if(	seconds_since_last_warning != None and
-				seconds_since_last_warning < self.repeated_warnings_block_timer
-			):
-				self.dev_log("Not enough time sinces last warning, sconds sinces last: ", seconds_since_last_warning)
+			if(	seconds_since_last_warning < self.repeated_warnings_block_timer):
+				self.dev_log("Not enough time sinces last warning, time", seconds_since_last_warning)
 				return
 		
-		if(not tracker.temp_normilised_after_last_warning):
-			self.dev_log("Temp have not been normilised sinces last warning")
+		if(not tracker.temp_normalised_after_last_warning):
+			self.dev_log("Temp have not been normalised sinces last warning")
 			return
 
 		if(type == TempWarningType.WARM):
@@ -127,10 +140,10 @@ class OrdinaryClimateControl(BaseClimateControl):
 			await self.send_notification(f"COLD WARNING -> {area.value}")
 
 		tracker.last_warning_sent = timestamp
-		tracker.temp_normilised_after_last_warning = False
+		tracker.temp_normalised_after_last_warning = False
 
 
-	def debug_conter(self):
+	def debug_counter(self):
 
 		if(not self.counting_down):
 			self.counter += 1

@@ -8,6 +8,7 @@ ordinary_climate-control:
   class: OrdinaryClimateControl
   is_active_ent: input_boolean.ordinary_climate_control
   debug: True
+  debug_fake_temps: False
   dev_logs: True
 # camera_patrol_camera_1:
 #   module: camera_patrol

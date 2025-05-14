@@ -27,16 +27,22 @@ class BaseClimateControl(Support):
 
         self.error_restart_interval = 10
 
-        self.temp_ent_ending = "_temp_humid_sensor_device_temperature"
+        self.temp_ent_ending = "_temp_humid_sensor_temperature"
 
-        self.ac_ent = "select.nedis_ir_controller_ac_mode"
-        self.ac_ext_fan_ent = "switch.smart_socket_4"
+        self.ac_ent             = "select.nedis_ir_controller_ac_mode"
+        self.ac_ext_fan_ent     = "switch.smart_socket_4"
         self.bedroom_heater_ent = "switch.smart_socket_1"
 
-        self.debug = bool(self.args.get("debug", False))
-        self.dev_logs = bool(self.args.get("dev_logs", False))
-        self.is_active_ent  = self.args.get("is_active_ent")
+        self.disable_compressor_mode_ent    = "input_boolean.climate_control_disable_compressor_mode"
+        self.polling_interval_ent           = "input_number.climate_control_polling_interval"
 
+        self.polling_interval = None
+        self.latest_start_time = None
+
+        self.debug      = bool(self.args.get("debug", False))
+        self.dev_logs   = bool(self.args.get("dev_logs", False))
+
+        self.is_active_ent  = self.args.get("is_active_ent")
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
         
@@ -58,26 +64,31 @@ class BaseClimateControl(Support):
     
 
     async def start(self):
-        self.dev_log("Turning on climate controller")
+        self.dev_log("Starting climate control")
 
-        self.polling_interval = float(await self.get_state("input_number.climate_control_polling_interval"))
+        self.polling_interval = float(await self.get_state(self.polling_interval_ent))
 
-        self.dev_log("self: ", self)
+        start_time = self.get_timestamp()
+        self.latest_start_time = start_time
 
         try:
-            await self.base_loop()
+            await self.base_loop(start_time)
+
         except Exception as e:
             self.log("Error caught\n", level="ERROR", exc_info=True)
-            self.log("Starting again in 5 seconds....")
 
             if(not self.debug):
+                self.log("Starting again in 5 seconds....")
+
                 await self.sleep(self.error_restart_interval)
-                self.create_task(self.start())
+
+                if(self.is_active and start_time == self.latest_start_time):
+                    self.create_task(self.start())
 
 
-    async def base_loop(self):
+    async def base_loop(self, start_time):
 
-        while(self.is_active):
+        while(self.is_active and start_time == self.latest_start_time):
             await self.loop_logic()
             await self.sleep(self.polling_interval)
 
@@ -106,3 +117,6 @@ class BaseClimateControl(Support):
         
         #TODO make the starting and stopping of cooling
         #if(outside_temp):
+
+    async def stop_cooling(self):
+        return
