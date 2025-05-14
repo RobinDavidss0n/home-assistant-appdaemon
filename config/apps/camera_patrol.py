@@ -97,8 +97,8 @@ class CameraPatrol(hass.Hass):
         self.dev_log("Starting camera patrol")
 
         try:
-            self.dev_log("sleep state: ", await self.get_state(self.is_sleep_state_ent))
-            self.dev_log("door_sensor_ent: ", await self.get_state(self.is_sleep_state_ent))
+            # self.dev_log("sleep state: ", await self.get_state(self.is_sleep_state_ent))
+            # self.dev_log("door_sensor_ent: ", await self.get_state(self.is_sleep_state_ent))
             if await self.get_state(self.is_sleep_state_ent) == "on":
                 
                 if await self.get_state(self.door_sensor_ent) == "off": # off == contact...
