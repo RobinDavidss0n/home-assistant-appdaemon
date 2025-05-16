@@ -24,40 +24,43 @@ class BaseClimateControl(Support):
     async def initialize(self):
 
         self.log("Base initing..")
+        
+        self.debug          = bool(self.args.get("debug", False))
+        self.dev_logs       = bool(self.args.get("dev_logs", False))
+        self.is_active_ent  = self.args.get("is_active_ent")
 
-        self.error_restart_interval = 10
-
-        self.temp_ent_ending = "_temp_humid_sensor_temperature"
+        self.temp_ent_ending    = "_temp_humid_sensor_temperature"
 
         self.ac_ent             = "select.nedis_ir_controller_ac_mode"
         self.ac_ext_fan_ent     = "switch.smart_socket_4"
         self.bedroom_heater_ent = "switch.smart_socket_1"
 
-        self.polling_interval_ent               = "input_number.climate_control_polling_interval"
-        self.min_time_fan_per_hour_ent          = "input_number.climate_control_min_time_fan_per_hour"
-        self.compressor_outside_temp_cutoff_ent = "input_number.climate_control_compressor_outside_temp_cutoff"
-        self.disable_ac_compressor_ent          = "input_boolean.climate_control_disable_compressor_mode"
-        self.disable_external_ac_fan_ent        = "input_boolean.climate_control_disable_external_ac_fan"
-        
+        self.base_settings_ents = [
+            "input_number.climate_control_polling_interval",
+            "input_number.climate_control_min_time_fan_per_hour",
+            "input_number.climate_control_compressor_outside_temp_cutoff",
+            "input_boolean.climate_control_disable_compressor_mode",
+            "input_boolean.climate_control_disable_external_ac_fan",
+        ]
         self.polling_interval               = None
+        self.min_time_fan_per_hour          = None
         self.compressor_outside_temp_cutoff = None
-        self.disable_ac_compressor          = None
+        self.disable_compressor_mode        = None
         self.disable_external_ac_fan        = None
 
+        await self.init_settings(self.base_settings_ents)
 
+        self.error_restart_interval = 10
         self.latest_start_time = None
 
-        self.debug      = bool(self.args.get("debug", False))
-        self.dev_logs   = bool(self.args.get("dev_logs", False))
-
-        self.is_active_ent  = self.args.get("is_active_ent")
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
-        self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
         
         self.dev_log("is_active", self.is_active)
 
         if(self.is_active):
             self.create_task(self.start())
+
+        self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
 
 
     def on_is_active_ent_change(self, entity, attribute, old, new, kwargs):
@@ -69,21 +72,40 @@ class BaseClimateControl(Support):
             self.create_task(self.start())
         else:
             self.is_active = False
+
+
+    async def init_settings(self, settings_ents, sub_class_prefix=""):
+        self.dev_log("init_settings")
+
+        for ent in settings_ents:
+
+            attr = ent.split(sub_class_prefix+"climate_control_")[1]
+            val = await self.get_state(ent)
+
+            if attr.startswith("disable_"):
+                setattr(self, attr, val == "on")
+            else:
+                setattr(self, attr, float(val))
+
+            self.listen_state(self.on_setting_change, ent, attr_name=attr)
+            self.dev_log(attr, getattr(self, attr))
+
+
+    def on_setting_change(self, entity, attribute, old, new, kwargs):
+
+        attr = kwargs.get("attr_name")
+
+        if attr:
+            if attr.startswith("disable_"):
+                value = new == "on"
+            else:
+                value = float(new)
+
+            setattr(self, attr, value)
+            self.dev_log(f"Setting '{attr}' updated to", value)
     
-    # TODO restart upon changes on settings
+
     async def start(self):
-
-        self.polling_interval               = float(await self.get_state(self.polling_interval_ent))
-        self.min_time_fan_per_hour          = float(await self.get_state(self.min_time_fan_per_hour_ent))
-        self.compressor_outside_temp_cutoff = float(await self.get_state(self.compressor_outside_temp_cutoff_ent))
-        self.disable_ac_compressor          = await self.get_state(self.disable_ac_compressor_ent) == "on"
-        self.disable_external_ac_fan        = await self.get_state(self.disable_external_ac_fan_ent) == "on"
-
-        self.dev_log("polling_interval", self.polling_interval)
-        self.dev_log("min_time_fan_per_hour", self.min_time_fan_per_hour)
-        self.dev_log("compressor_outside_temp_cutoff", self.compressor_outside_temp_cutoff)
-        self.dev_log("disable_ac_compressor", self.disable_ac_compressor)
-        self.dev_log("disable_external_ac_fan", self.disable_external_ac_fan)
 
         start_time = self.get_timestamp()
         self.latest_start_time = start_time
@@ -92,8 +114,7 @@ class BaseClimateControl(Support):
 
         try:
             await self.base_loop(start_time)
-
-        except Exception as e:
+        except:
             self.log("Error caught\n", level="ERROR", exc_info=True)
 
             if(not self.debug):
@@ -130,6 +151,7 @@ class BaseClimateControl(Support):
     async def set_bedroom_heater(self, mode: OnOff):
         await self.call_service(f"switch/turn_{mode.value}", entity_id=self.bedroom_heater_ent)
 
+
     async def start_cooling(self):
         self.dev_log("start_cooling")
 
@@ -137,7 +159,7 @@ class BaseClimateControl(Support):
         
         if(
             outside_temp > self.compressor_outside_temp_cutoff and
-            not self.disable_ac_compressor
+            not self.disable_compressor_mode
         ):
             self.dev_log("Setting AC to COOL")
             await self.set_ac_mode(ACModes.COOL)

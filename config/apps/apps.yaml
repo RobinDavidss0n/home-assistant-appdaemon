@@ -4,7 +4,7 @@
 #   class: HelloWorld
 
 ordinary_climate-control:
-  module: ordinary_climat_control
+  module: ordinary_climate_control
   class: OrdinaryClimateControl
   is_active_ent: input_boolean.ordinary_climate_control
   debug: True
