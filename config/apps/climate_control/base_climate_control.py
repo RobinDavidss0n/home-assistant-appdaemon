@@ -32,8 +32,11 @@ class BaseClimateControl(Support):
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
         self.dev_log("is_active", self.is_active)
 
-        self.error_restart_interval = 10
-        self.latest_start_time = None
+        self.error_restart_interval         = 60
+        self.latest_start_time              = None  # Used to make sure we don't have multiple instances running
+        self.is_any_fans_active             = False # Is any fans currently active
+        self.current_hour                   = None  # Current hour of the day
+        self.fan_runtime_mins_current_hour  = None  # Minutes the fan has run this hour
 
         self.temp_ent_ending    = "_temp_humid_sensor_temperature"
 
@@ -121,10 +124,12 @@ class BaseClimateControl(Support):
 
         try:
             await self.base_loop(start_time)
-        except:
+        except Exception as e:
             self.log("Error caught\n", level="ERROR", exc_info=True)
 
             if(not self.debug):
+                
+                self.send_notification(f"An error happened: {e}")
                 self.log("Starting again in 5 seconds....")
 
                 await self.sleep(self.error_restart_interval)
@@ -136,15 +141,16 @@ class BaseClimateControl(Support):
     async def base_loop(self, start_time):
 
         while(self.is_active and start_time == self.latest_start_time):
+            await self.update_fan_runtime()
             await self.loop_logic()
             await self.sleep(self.polling_interval)
-
 
     async def loop_logic(self):
         return
     
+    
     async def send_notification(self, msg):
-        await self.send_mobile_notification(f"Climate Control", msg)
+        await self.send_mobile_notification("Climate Control", msg)
 
     async def get_temp(self, sensor: TempSensorsLocation):
         return float(await self.get_state(f"sensor.{sensor.value}{self.temp_ent_ending}"))
@@ -191,10 +197,45 @@ class BaseClimateControl(Support):
 
         # Set bedroom heater to off
         await self.set_bedroom_heater(OnOff.OFF)
+
+        self.is_any_fans_active = True
             
 
     async def stop_cooling(self):
         self.dev_log("stop_cooling")
 
-        await self.set_ac_mode(ACModes.OFF)
+        self.dev_log("Fan runtime this hour", self.fan_runtime_mins_current_hour)
+        self.dev_log("Minimum fan runtime this hour", self.min_time_fan_per_hour)
+
+        if self.min_time_fan_per_hour > self.fan_runtime_mins_current_hour:
+            
+            self.dev_log("Fan runtime this hour is less than minimum, keeping AC fan on.")
+            await self.set_ac_mode(ACModes.FAN)
+            self.is_any_fans_active = True
+
+        else:
+            await self.set_ac_mode(ACModes.OFF)
+            self.is_any_fans_active = False
+
         await self.set_ac_ext_fan(OnOff.OFF)
+
+    
+    async def update_fan_runtime(self) -> None:
+        self.dev_log("update_fan_runtime")
+
+        current_hour = (await self.datetime()).hour
+        self.dev_log("current hour", current_hour)
+
+        if current_hour != self.current_hour:
+            self.dev_log("New hour started. Previous hour fan runtime", self.fan_runtime_mins_current_hour)
+            self.fan_runtime_mins_current_hour = 0
+            self.current_hour = current_hour
+
+        if self.is_any_fans_active:
+            # Convert the polling interval (seconds) to minutes
+            self.fan_runtime_mins_current_hour += self.polling_interval / 60
+
+        # Optional: add a debug line so you can see the number climb
+        self.dev_log("Fan mins run current hour", self.fan_runtime_mins_current_hour)
+
+        

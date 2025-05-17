@@ -3,7 +3,7 @@
 #   module: hello
 #   class: HelloWorld
 
-ordinary_climate-control:
+ordinary_climate_control:
   module: ordinary_climate_control
   class: OrdinaryClimateControl
   is_active_ent: input_boolean.ordinary_climate_control

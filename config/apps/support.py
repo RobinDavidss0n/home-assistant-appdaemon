@@ -19,7 +19,11 @@ class Support(hass.Hass):
 
     def dev_log(self, msg, args=None):
         if self.dev_logs:
+
             if args is None:
                 self.log(f"-> {msg}")
             else:
-                self.log(f"-> {msg}: {args}")
+                if isinstance(args, float):
+                    self.log(f"-> {msg}: {round(args, 2)}")
+                else:
+                    self.log(f"-> {msg}: {args}")

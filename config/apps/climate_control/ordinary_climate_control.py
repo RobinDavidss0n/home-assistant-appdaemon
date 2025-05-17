@@ -66,6 +66,8 @@ class OrdinaryClimateControl(BaseClimateControl):
 		diffs = []
 		for room in rooms:
 			diffs.append(await self.get_diff_temp_in_room(room))
+			
+		self.dev_log("========================================")
 
 		highest_diff_index = 0
 		for i in range(1, len(diffs)):
@@ -88,13 +90,18 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 	async def get_diff_temp_in_room(self, area: TempSensorsLocation):
 
+		self.dev_log("========================================")
+		self.dev_log(area.value)
+
 		target_temp = await self.get_target_temp(area)
 		current_temp = await self.get_temp(area)
 
 		diff = current_temp - target_temp
 		abs_temp_diff = abs(diff)
-
-		self.dev_log(f"{area.value}: current_temp = {current_temp}, diff = {diff}")
+		
+		
+		self.dev_log("current_temp",  current_temp)
+		self.dev_log("diff",  diff)
 
 		# Too warm
 		if(
