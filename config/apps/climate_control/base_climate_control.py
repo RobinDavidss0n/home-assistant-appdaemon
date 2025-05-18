@@ -34,9 +34,10 @@ class BaseClimateControl(Support):
 
         self.error_restart_interval         = 60
         self.latest_start_time              = None  # Used to make sure we don't have multiple instances running
-        self.is_any_fans_active             = False # Is any fans currently active
-        self.current_hour                   = None  # Current hour of the day
-        self.fan_runtime_mins_current_hour  = None  # Minutes the fan has run this hour
+        self.is_cooling                     = False
+        self.is_any_fans_active             = False
+        self.current_hour                   = None 
+        self.fan_runtime_mins_current_hour  = None
 
         self.temp_ent_ending    = "_temp_humid_sensor_temperature"
 
@@ -99,6 +100,8 @@ class BaseClimateControl(Support):
             self.is_active = True
             self.create_task(self.start())
         else:
+            self.create_task(self.set_ac_ext_fan(OnOff.OFF))
+            self.create_task(self.set_ac_mode(ACModes.FAN))
             self.is_active = False
 
     def on_setting_change(self, entity, attribute, old, new, kwargs):
@@ -171,6 +174,8 @@ class BaseClimateControl(Support):
     async def start_cooling(self):
         self.dev_log("start_cooling")
 
+        self.is_cooling = True
+
         outside_temp = await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE)
         too_cold_for_compressor = outside_temp < self.compressor_outside_temp_cutoff
 
@@ -207,6 +212,8 @@ class BaseClimateControl(Support):
         self.dev_log("Fan runtime this hour", self.fan_runtime_mins_current_hour)
         self.dev_log("Minimum fan runtime this hour", self.min_time_fan_per_hour)
 
+        self.is_cooling = False
+
         if self.min_time_fan_per_hour > self.fan_runtime_mins_current_hour:
             
             self.dev_log("Fan runtime this hour is less than minimum, keeping AC fan on.")
@@ -220,7 +227,7 @@ class BaseClimateControl(Support):
         await self.set_ac_ext_fan(OnOff.OFF)
 
     
-    async def update_fan_runtime(self) -> None:
+    async def update_fan_runtime(self):
         self.dev_log("update_fan_runtime")
 
         current_hour = (await self.datetime()).hour
@@ -232,10 +239,8 @@ class BaseClimateControl(Support):
             self.current_hour = current_hour
 
         if self.is_any_fans_active:
-            # Convert the polling interval (seconds) to minutes
-            self.fan_runtime_mins_current_hour += self.polling_interval / 60
+             self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
-        # Optional: add a debug line so you can see the number climb
         self.dev_log("Fan mins run current hour", self.fan_runtime_mins_current_hour)
 
         
