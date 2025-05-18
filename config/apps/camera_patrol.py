@@ -97,8 +97,8 @@ class CameraPatrol(hass.Hass):
         self.dev_log("Starting camera patrol")
 
         try:
-            # self.dev_log("sleep state: ", await self.get_state(self.is_sleep_state_ent))
-            # self.dev_log("door_sensor_ent: ", await self.get_state(self.is_sleep_state_ent))
+            self.dev_log("sleep state: ", await self.get_state(self.is_sleep_state_ent))
+            self.dev_log("door_sensor_ent: ", await self.get_state(self.door_sensor_ent))
             if await self.get_state(self.is_sleep_state_ent) == "on":
                 
                 if await self.get_state(self.door_sensor_ent) == "off": # off == contact...
@@ -218,18 +218,18 @@ class CameraPatrol(hass.Hass):
     async def handle_door_sensor_change(self, restartFromError = False):
 
         try: 
-            self.dev_log("Handeling door sensor change.")
+            self.dev_log("Handling door sensor change.")
             
             if(await self.get_state(self.is_sleep_state_ent) == "off"):
                 self.dev_log("Sleep state is off, returning.")
                 return
             
             if(self.is_patroling and not self.privacy_set_by_door_state):
-                self.dev_log("Currently patroling, setting privacy.")
+                self.dev_log("Currently patrolling, setting privacy.")
                 self.privacy_set_by_door_state = True
 
             if(not self.privacy_set_by_door_state):
-                self.dev_log("Not patroling and privacy not set by door state, returning.")
+                self.dev_log("Not patrolling and privacy not set by door state, returning.")
                 return
             
             if(not restartFromError):
