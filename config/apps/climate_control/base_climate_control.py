@@ -23,8 +23,6 @@ class BaseClimateControl(Support):
 
     async def initialize(self):
 
-        self.log("Base initing..")
-
         self.debug          = bool(self.args.get("debug", False))
         self.dev_logs       = bool(self.args.get("dev_logs", False))
         

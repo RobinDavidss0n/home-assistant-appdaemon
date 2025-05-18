@@ -1,6 +1,8 @@
 import appdaemon.plugins.hass.hassapi as hass
 import time
 from enum import IntEnum
+from support import Support
+
 
 class DoorState(IntEnum):
     CLOSED_FROM_INSIDE  = 0
@@ -8,7 +10,7 @@ class DoorState(IntEnum):
     CLOSED_FROM_OUTSIDE = 2
     OPENED_FROM_OUTSIDE = 3
 
-class CameraPatrol(hass.Hass):
+class CameraPatrol(Support):
 
     async def initialize(self):
         self.is_patroling_ent = self.args.get("is_patroling_ent")
@@ -153,8 +155,13 @@ class CameraPatrol(hass.Hass):
                             
         except Exception as e:
             self.log("camera_patrol -> Error caught", e)
+
+            self.send_mobile_notification(
+                "Camera patrol",
+                f"An error happened: {e}"
+            )
             
-            await self.sleep(5)
+            await self.sleep(30)
             await self.camera_patrol(self)
 
 
