@@ -108,14 +108,14 @@ class OrdinaryClimateControl(BaseClimateControl):
 			diff > 0 and
 			abs_temp_diff > self.temp_warning_threshold_warm
 		):
-			await self.send_temp_warning(TempWarningType.WARM, area)
+			await self.send_temp_warning(TempWarningType.WARM, area,  target_temp, current_temp)
 
 		# Too cold
 		elif(
 			diff < 0 and
 			abs_temp_diff > self.temp_warning_threshold_cold
 		):
-			await self.send_temp_warning(TempWarningType.COLD, area)
+			await self.send_temp_warning(TempWarningType.COLD, area, target_temp, current_temp)
 
 		else:
 			get_tracker_area(self.warm_temp_warning_tracker, area).temp_normalized_after_last_warning = True
@@ -124,7 +124,7 @@ class OrdinaryClimateControl(BaseClimateControl):
 		return diff
 
 
-	async def send_temp_warning(self, type: TempWarningType, area: TempSensorsLocation):
+	async def send_temp_warning(self, type: TempWarningType, area: TempSensorsLocation, target_temp, current_temp):
 
 		if(self.disable_temp_warnings):
 			self.dev_log("Warnings disabled.")
@@ -150,11 +150,13 @@ class OrdinaryClimateControl(BaseClimateControl):
 			self.dev_log("Temp have not been normalized since last warning")
 			return
 
+		temp_info = f"-> {area.value} \n Current: {round(current_temp, 2)} | Target: {round(target_temp, 2)} | Diff: {round((current_temp - target_temp), 2)}"
+
 		if(type == TempWarningType.WARM):
-			await self.send_notification(f"WARM WARNING -> {area.value}")
-		
+			await self.send_notification(f"WARM WARNING {temp_info}")
+
 		if(type == TempWarningType.COLD):
-			await self.send_notification(f"COLD WARNING -> {area.value}")
+			await self.send_notification(f"COLD WARNING {temp_info}")
 
 		tracker.last_warning_sent = timestamp
 		tracker.temp_normalized_after_last_warning = False
