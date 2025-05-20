@@ -40,6 +40,7 @@ class BaseClimateControl(Support):
         self.temp_ent_ending    = "_temp_humid_sensor_temperature"
 
         self.ac_ent             = "select.nedis_ir_controller_ac_mode"
+        self.ac_power_draw_ent  = "sensor.smart_socket_3_power"
         self.ac_ext_fan_ent     = "switch.smart_socket_4"
         self.bedroom_heater_ent = "switch.smart_socket_1"
 
@@ -65,6 +66,7 @@ class BaseClimateControl(Support):
             self.create_task(self.start())
 
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
+        self.listen_state(self.on_ac_power_draw_change, self.ac_power_draw_ent)
 
 
     async def init_settings_members(self, settings_ents, sub_class_prefix=""):
@@ -91,7 +93,6 @@ class BaseClimateControl(Support):
 
 
     def on_is_active_ent_change(self, entity, attribute, old, new, kwargs):
-
         self.dev_log(f"Is active change from '{old}' to '{new}'")
 
         if new == "on":
@@ -99,11 +100,14 @@ class BaseClimateControl(Support):
             self.create_task(self.start())
         else:
             self.create_task(self.set_ac_ext_fan(OnOff.OFF))
-            self.create_task(self.set_ac_mode(ACModes.FAN))
+            self.create_task(self.set_ac_mode(ACModes.OFF))
             self.is_active = False
 
-    def on_setting_change(self, entity, attribute, old, new, kwargs):
+    def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs):
+        self.dev_log(f"AC power draw change from '{old}' to '{new}'")
+        self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
 
+    def on_setting_change(self, entity, attribute, old, new, kwargs):
         attr = kwargs.get("attr_name")
 
         if attr:
@@ -162,6 +166,9 @@ class BaseClimateControl(Support):
     async def set_ac_mode(self, mode: ACModes):
         await self.call_service("select/select_option", entity_id=self.ac_ent, option=mode.value)
 
+    async def get_ac_current_power_draw(self):
+        return float(await self.get_state(self.ac_power_draw_ent))
+
     async def set_ac_ext_fan(self, mode: OnOff):
         await self.call_service(f"switch/turn_{mode.value}", entity_id=self.ac_ext_fan_ent)
 
@@ -190,13 +197,7 @@ class BaseClimateControl(Support):
             await self.set_ac_mode(ACModes.FAN)
 
         # Set external AC fan
-        if(self.disable_external_ac_fan):
-            self.dev_log("Setting External AC Fan to OFF")
-            await self.set_ac_ext_fan(OnOff.OFF)
-
-        else:
-            self.dev_log("Setting External AC Fan to On")
-            await self.set_ac_ext_fan(OnOff.ON)
+        await self.handle_ac_ext_fan_operation_during_cooling()
 
         # Set bedroom heater to off
         await self.set_bedroom_heater(OnOff.OFF)
@@ -241,4 +242,30 @@ class BaseClimateControl(Support):
 
         self.dev_log("Fan mins run current hour", self.fan_runtime_mins_current_hour)
 
+    async def handle_ac_ext_fan_operation_during_cooling(self):
+        self.dev_log("handle_ac_ext_fan_operation")
+
+        if not self.is_active:
+            self.dev_log("CC not active, returning")
+            return
+
+        if not self.is_cooling:
+            self.dev_log("Not cooling, setting external fan to OFF")
+            await self.set_ac_ext_fan(OnOff.OFF)
+            return
+
+        if(self.disable_external_ac_fan):
+            self.dev_log("External AC Fan disabled, setting external fan to OFF")
+            await self.set_ac_ext_fan(OnOff.OFF)
+            return
+
+        ac_current_power_draw = await self.get_ac_current_power_draw()
+        self.dev_log("AC current power draw", ac_current_power_draw)
+
+        if ac_current_power_draw > 500:
+            self.dev_log("Compressor running, setting external fan to ON")
+            await self.set_ac_ext_fan(OnOff.ON)
+            return
         
+        self.dev_log("Compressor not running, turning OFF external fan")
+        await self.set_ac_ext_fan(OnOff.OFF)
