@@ -175,14 +175,16 @@ class BaseClimateControl(Support):
     async def set_bedroom_heater(self, mode: OnOff):
         await self.call_service(f"switch/turn_{mode.value}", entity_id=self.bedroom_heater_ent)
 
+    async def get_too_cold_for_compressor(self):
+        outside_temp = await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE)
+        return outside_temp < self.compressor_outside_temp_cutoff
+
 
     async def start_cooling(self):
         self.dev_log("start_cooling")
 
         self.is_cooling = True
-
-        outside_temp = await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE)
-        too_cold_for_compressor = outside_temp < self.compressor_outside_temp_cutoff
+        too_cold_for_compressor = await self.get_too_cold_for_compressor()
 
         # Set AC mode
         if(not too_cold_for_compressor and not self.disable_ac_compressor):
@@ -257,6 +259,12 @@ class BaseClimateControl(Support):
         if(self.disable_external_ac_fan):
             self.dev_log("External AC Fan disabled, setting external fan to OFF")
             await self.set_ac_ext_fan(OnOff.OFF)
+            return
+        
+        too_cold_for_compressor = await self.get_too_cold_for_compressor()
+        if too_cold_for_compressor:
+            self.dev_log("Too cold outside to run compressor, setting external fan to ON")
+            await self.set_ac_ext_fan(OnOff.ON)
             return
 
         ac_current_power_draw = await self.get_ac_current_power_draw()
