@@ -66,8 +66,6 @@ class OrdinaryClimateControl(BaseClimateControl):
 		diffs = []
 		for room in rooms:
 			diffs.append(await self.get_diff_temp_in_room(room))
-			
-		self.dev_log("========================================")
 
 		highest_diff_index = 0
 		for i in range(1, len(diffs)):
@@ -76,9 +74,8 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 		warmest_room = rooms[highest_diff_index]
 		warmest_rooms_diff = diffs[highest_diff_index]
-		
-		self.dev_log("Warmest room", warmest_room.value)
-		self.dev_log("Warmest roms diff", warmest_rooms_diff)
+
+		self.dev_log(f"Warmest room {warmest_room.value} | Diff: {round(warmest_rooms_diff)}")
 
 		if(warmest_rooms_diff > self.variability_threshold):
 			self.dev_log("Warmest room too hot, turning on cooling.")
@@ -90,18 +87,13 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 	async def get_diff_temp_in_room(self, area: TempSensorsLocation):
 
-		self.dev_log("========================================")
-		self.dev_log(area.value)
-
 		target_temp = await self.get_target_temp(area)
 		current_temp = await self.get_temp(area)
 
 		diff = current_temp - target_temp
 		abs_temp_diff = abs(diff)
-		
-		
-		self.dev_log("current_temp",  current_temp)
-		self.dev_log("diff",  diff)
+
+		self.dev_log(f"ROOM = {area.value} | Current temp: {round(current_temp, 2)}\nTarget temp: {round(target_temp, 2)} | Diff: {round(diff, 2)}")
 
 		# Too warm
 		if(
@@ -127,7 +119,6 @@ class OrdinaryClimateControl(BaseClimateControl):
 	async def send_temp_warning(self, type: TempWarningType, area: TempSensorsLocation, target_temp, current_temp):
 
 		if(self.disable_temp_warnings):
-			self.dev_log("Warnings disabled.")
 			return
 		
 		tracker: TempWarningTrackerArea = getattr(self.warm_temp_warning_tracker, area.value)

@@ -1,7 +1,7 @@
 import appdaemon.plugins.hass.hassapi as hass
 from support import Support
 from enum import Enum
-
+import time
 
 class TempSensorsLocation(Enum):
     BEDROOM = "bedroom"
@@ -21,6 +21,29 @@ class OnOff(Enum):
 
 class BaseClimateControl(Support):
 
+    temp_ent_ending    = "_temp_humid_sensor_temperature"
+
+    ac_ent             = "select.nedis_ir_controller_ac_mode"
+    ac_power_draw_ent  = "sensor.smart_socket_3_power"
+    ac_ext_fan_ent     = "switch.smart_socket_4"
+    bedroom_heater_ent = "switch.smart_socket_1"
+
+    base_settings_ents = [
+        "input_number.climate_control_polling_interval",
+        "input_number.climate_control_min_time_fan_per_hour",
+        "input_number.climate_control_compressor_outside_temp_cutoff",
+        "input_boolean.climate_control_disable_ac_compressor",
+        "input_boolean.climate_control_disable_external_ac_fan",
+        "input_boolean.climate_control_disable_freeze_warnings",
+    ]
+
+    error_restart_interval = 60
+
+    compressor_low_draw_threshold      = 750     # CONST - Threshold for when the compressor is running but drawing low watts the usual, might be freezed over
+    compressor_running_draw_threshold  = 200     # CONST - Threshold for when compressor is running, the ac would draw more than this
+    compressor_max_low_draw_duration   = 45      # CONST - seconds before considering freezed over
+    defrost_cycle_duration             = 60 * 5  # CONST - seconds after a freezed over
+
     async def initialize(self):
 
         self.debug          = bool(self.args.get("debug", False))
@@ -30,34 +53,26 @@ class BaseClimateControl(Support):
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
         self.dev_log("is_active", self.is_active)
 
-        self.error_restart_interval         = 60
-        self.latest_start_time              = None  # Used to make sure we don't have multiple instances running
-        self.is_cooling                     = False
-        self.is_any_fans_active             = False
-        self.current_hour                   = None 
-        self.fan_runtime_mins_current_hour  = None
+        # --------------------------------------------------------------------
+        # Mutable state initialization
+        # --------------------------------------------------------------------        
+        self.latest_start_time                  = None  # Used to make sure we don't have multiple instances running
+        self.is_cooling                         = False
+        self.is_any_fans_active                 = False
+        self.current_hour                       = None 
+        self.fan_runtime_mins_current_hour      = None
+        self.compressor_low_draw_timer          = 0    # Used to track when compressor low draw started
+        self.current_defrosting_timer           = 0    # seconds on the current defrosting timer
 
-        self.temp_ent_ending    = "_temp_humid_sensor_temperature"
-
-        self.ac_ent             = "select.nedis_ir_controller_ac_mode"
-        self.ac_power_draw_ent  = "sensor.smart_socket_3_power"
-        self.ac_ext_fan_ent     = "switch.smart_socket_4"
-        self.bedroom_heater_ent = "switch.smart_socket_1"
-
-        self.base_settings_ents = [
-            "input_number.climate_control_polling_interval",
-            "input_number.climate_control_min_time_fan_per_hour",
-            "input_number.climate_control_compressor_outside_temp_cutoff",
-            "input_boolean.climate_control_disable_ac_compressor",
-            "input_boolean.climate_control_disable_external_ac_fan",
-        ]
+        # Entity-driven settings (overwritten by init_settings_members)
         self.polling_interval               = None
         self.min_time_fan_per_hour          = None
         self.compressor_outside_temp_cutoff = None
         self.disable_ac_compressor          = None
         self.disable_external_ac_fan        = None
+        self.disable_freeze_warnings        = None
 
-        await self.init_settings_members(self.base_settings_ents)
+        await self.init_settings_members(BaseClimateControl.base_settings_ents)
 
 
     async def on_init_done(self):
@@ -66,22 +81,15 @@ class BaseClimateControl(Support):
             self.create_task(self.start())
 
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
-        self.listen_state(self.on_ac_power_draw_change, self.ac_power_draw_ent)
+        self.listen_state(self.on_ac_power_draw_change, BaseClimateControl.ac_power_draw_ent)
 
 
     async def init_settings_members(self, settings_ents, sub_class_prefix=""):
-        self.dev_log("init_settings")
 
         for ent in settings_ents:
-            self.dev_log("<=======================================================>")
-            self.dev_log("ent", ent)
 
-            self.dev_log("split str", sub_class_prefix+"climate_control_")
             attr = ent.split(sub_class_prefix+"climate_control_")[1]
-            self.dev_log("attr", attr)
-
             val = await self.get_state(ent)
-            self.dev_log("val", val)
 
             if attr.startswith("disable_"):
                 setattr(self, attr, val == "on")
@@ -103,7 +111,7 @@ class BaseClimateControl(Support):
             self.create_task(self.set_ac_mode(ACModes.OFF))
             self.is_active = False
 
-    def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs):
+    async def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs): 
         self.dev_log(f"AC power draw change from '{old}' to '{new}'")
         self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
 
@@ -124,6 +132,8 @@ class BaseClimateControl(Support):
 
         start_time = self.get_timestamp()
         self.latest_start_time = start_time
+        self.current_defrosting_timer = 0
+        self.compressor_low_draw_timer = 0
 
         self.dev_log("Starting climate control, start_time", start_time)
 
@@ -137,7 +147,7 @@ class BaseClimateControl(Support):
                 self.send_notification(f"An error happened: {e}")
                 self.log("Starting again in 5 seconds....")
 
-                await self.sleep(self.error_restart_interval)
+                await self.sleep(BaseClimateControl.error_restart_interval)
 
                 if(self.is_active and start_time == self.latest_start_time):
                     self.create_task(self.start())
@@ -158,22 +168,22 @@ class BaseClimateControl(Support):
         await self.send_mobile_notification("Climate Control", msg)
 
     async def get_temp(self, sensor: TempSensorsLocation):
-        return float(await self.get_state(f"sensor.{sensor.value}{self.temp_ent_ending}"))
+        return float(await self.get_state(f"sensor.{sensor.value}{BaseClimateControl.temp_ent_ending}"))
 
     async def get_target_temp(self, area: TempSensorsLocation):
         return float(await self.get_state(f"input_number.ordinary_climate_control_target_temp_{area.value}"))
 
     async def set_ac_mode(self, mode: ACModes):
-        await self.call_service("select/select_option", entity_id=self.ac_ent, option=mode.value)
+        await self.call_service("select/select_option", entity_id=BaseClimateControl.ac_ent, option=mode.value)
 
     async def get_ac_current_power_draw(self):
-        return float(await self.get_state(self.ac_power_draw_ent))
+        return float(await self.get_state(BaseClimateControl.ac_power_draw_ent))
 
     async def set_ac_ext_fan(self, mode: OnOff):
-        await self.call_service(f"switch/turn_{mode.value}", entity_id=self.ac_ext_fan_ent)
+        await self.call_service(f"switch/turn_{mode.value}", entity_id=BaseClimateControl.ac_ext_fan_ent)
 
     async def set_bedroom_heater(self, mode: OnOff):
-        await self.call_service(f"switch/turn_{mode.value}", entity_id=self.bedroom_heater_ent)
+        await self.call_service(f"switch/turn_{mode.value}", entity_id=BaseClimateControl.bedroom_heater_ent)
 
     async def get_too_cold_for_compressor(self):
         outside_temp = await self.get_temp(TempSensorsLocation.OUTSIDE_FOREST_SIDE)
@@ -188,6 +198,16 @@ class BaseClimateControl(Support):
 
         # Set AC mode
         if(not too_cold_for_compressor and not self.disable_ac_compressor):
+
+            # Sets defrosting mode if radiator might have freezed over
+            # Returns if radiator freeze is detected
+            if await self.check_for_radiator_freeze():
+                self.dev_log("Radiator freeze detected, starting fans mode.")
+                
+                await self.set_ac_mode(ACModes.FAN)
+                await self.set_ac_ext_fan(OnOff.ON)
+                return
+
             self.dev_log("Setting AC to COOL")
             await self.set_ac_mode(ACModes.COOL)
 
@@ -210,8 +230,7 @@ class BaseClimateControl(Support):
     async def stop_cooling(self):
         self.dev_log("stop_cooling")
 
-        self.dev_log("Fan runtime this hour", self.fan_runtime_mins_current_hour)
-        self.dev_log("Minimum fan runtime this hour", self.min_time_fan_per_hour)
+        self.dev_log(f"\nFan runtime this hour: {self.fan_runtime_mins_current_hour}\n Minimum fan runtime this hour: {self.min_time_fan_per_hour}")
 
         self.is_cooling = False
 
@@ -229,26 +248,24 @@ class BaseClimateControl(Support):
 
     
     async def update_fan_runtime(self):
-        self.dev_log("update_fan_runtime")
 
         current_hour = (await self.datetime()).hour
-        self.dev_log("current hour", current_hour)
 
         if current_hour != self.current_hour:
-            self.dev_log("New hour started. Previous hour fan runtime", self.fan_runtime_mins_current_hour)
             self.fan_runtime_mins_current_hour = 0
             self.current_hour = current_hour
 
         if self.is_any_fans_active:
              self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
-        self.dev_log("Fan mins run current hour", self.fan_runtime_mins_current_hour)
-
     async def handle_ac_ext_fan_operation_during_cooling(self):
-        self.dev_log("handle_ac_ext_fan_operation")
 
         if not self.is_active:
-            self.dev_log("CC not active, returning")
+            return
+        
+        # If currently in defrosting mode, no need to change external fan state
+        if self.current_defrosting_timer > 0:
+            self.dev_log("Defrosting in progress, do not changing external fan state")
             return
 
         if not self.is_cooling:
@@ -266,14 +283,78 @@ class BaseClimateControl(Support):
             self.dev_log("Too cold outside to run compressor, setting external fan to ON")
             await self.set_ac_ext_fan(OnOff.ON)
             return
+        
+        if self.disable_ac_compressor:
+            self.dev_log("Compressor disabled, setting external fan to ON")
+            await self.set_ac_ext_fan(OnOff.ON)
+            return
 
         ac_current_power_draw = await self.get_ac_current_power_draw()
         self.dev_log("AC current power draw", ac_current_power_draw)
 
-        if ac_current_power_draw > 500:
+        if ac_current_power_draw > BaseClimateControl.compressor_running_draw_threshold:
             self.dev_log("Compressor running, setting external fan to ON")
             await self.set_ac_ext_fan(OnOff.ON)
             return
         
         self.dev_log("Compressor not running, turning OFF external fan")
         await self.set_ac_ext_fan(OnOff.OFF)
+
+
+    async def check_for_radiator_freeze(self) -> bool:
+        self.dev_log("check_for_radiator_freeze")
+
+        # Currently in defrost mode
+        if self.current_defrosting_timer > 0:
+            self.dev_log("Defrost active, defrosting cycle duration", {BaseClimateControl.defrost_cycle_duration})
+
+            self.current_defrosting_timer += self.polling_interval
+            self.dev_log(f"Current defrosting timer", self.current_defrosting_timer)
+
+            # Defrosting complete
+            if self.current_defrosting_timer > BaseClimateControl.defrost_cycle_duration:
+                self.dev_log("Defrosting complete")
+                self.current_defrosting_timer = 0
+                return False
+            
+            self.dev_log("Defrosting in progress - IS freezed, returning True")
+            return True
+
+        else:
+            ac_watt = await self.get_ac_current_power_draw()
+            self.dev_log("AC current power draw", ac_watt)
+
+            # Compressor running normally
+            if ac_watt >= BaseClimateControl.compressor_low_draw_threshold:
+                self.dev_log("Compressor draw above threshold")
+                self.compressor_low_draw_timer = 0
+                return False
+
+            # Compressor not running
+            if ac_watt <= BaseClimateControl.compressor_running_draw_threshold:
+                self.dev_log("Compressor not running")
+                self.compressor_low_draw_timer = 0
+                return False
+
+            # Compressor low draw detected
+            if ac_watt <= BaseClimateControl.compressor_low_draw_threshold:
+                self.dev_log("Compressor low draw detected, adding to timer")
+
+                self.compressor_low_draw_timer += self.polling_interval
+                self.dev_log("Compressor low draw timer", self.compressor_low_draw_timer)
+
+                # Low draw timer exceeded, start defrosting
+                if self.compressor_low_draw_timer > BaseClimateControl.compressor_max_low_draw_duration:
+                    self.dev_log("Low draw duration exceeded, might have freezed over, starting defrost")
+
+                    self.compressor_low_draw_timer = 0
+                    self.current_defrosting_timer = 1 # activate defrosting
+
+                    if not self.disable_freeze_warnings:
+                        await self.send_notification("Radiator freeze detected, starting defrosting cycle.")
+                    return await self.check_for_radiator_freeze()
+                
+                self.dev_log("Compressor low draw timer not exceeded")
+                return False              
+
+        raise Exception(f"check_for_radiator_freeze > unhandled case, ac power draw: {ac_watt}")

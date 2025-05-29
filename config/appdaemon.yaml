@@ -7,7 +7,7 @@ appdaemon:
     plugins:
         HASS:
             type: hass
-            ha_url: http://192.168.0.198:8123/
+            ha_url: http://192.168.50.135:8123/
             # works in runtime so ignore the error
             token: !env_var HASS_TOKEN
 http:
