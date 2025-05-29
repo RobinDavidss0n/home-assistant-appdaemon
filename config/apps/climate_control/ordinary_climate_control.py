@@ -75,7 +75,7 @@ class OrdinaryClimateControl(BaseClimateControl):
 		warmest_room = rooms[highest_diff_index]
 		warmest_rooms_diff = diffs[highest_diff_index]
 
-		self.dev_log(f"Warmest room {warmest_room.value} | Diff: {round(warmest_rooms_diff)}")
+		self.dev_log(f"Warmest room {warmest_room.value} | Diff: {round(warmest_rooms_diff, 2)}")
 
 		if(warmest_rooms_diff > self.variability_threshold):
 			self.dev_log("Warmest room too hot, turning on cooling.")
