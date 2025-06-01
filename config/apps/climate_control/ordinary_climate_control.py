@@ -40,16 +40,15 @@ class OrdinaryClimateControl(BaseClimateControl):
 		self.repeated_warnings_block_timer 	= None
 		self.disable_temp_warnings			= None
 
+		self.cold_temp_warning_tracker = TempWarningTracker()
+		self.warm_temp_warning_tracker = TempWarningTracker()
+
 		await self.init_settings_members(self.settings_ents, "ordinary_")
 
 		await self.on_init_done()
 
 
-	async def start(self):
-
-		self.cold_temp_warning_tracker = TempWarningTracker()
-		self.warm_temp_warning_tracker = TempWarningTracker()
-		
+	async def start(self):		
 		await super().start()
 
 

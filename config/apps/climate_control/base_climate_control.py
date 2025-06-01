@@ -32,17 +32,16 @@ class BaseClimateControl(Support):
         "input_number.climate_control_polling_interval",
         "input_number.climate_control_min_time_fan_per_hour",
         "input_number.climate_control_compressor_outside_temp_cutoff",
+        "input_number.climate_control_compressor_low_draw_threshold",
+        "input_number.climate_control_compressor_max_low_draw_duration",
+        "input_number.climate_control_defrost_cycle_duration",
         "input_boolean.climate_control_disable_ac_compressor",
         "input_boolean.climate_control_disable_external_ac_fan",
         "input_boolean.climate_control_disable_freeze_warnings",
     ]
 
     error_restart_interval = 60
-
-    compressor_low_draw_threshold      = 750     # CONST - Threshold for when the compressor is running but drawing low watts the usual, might be freezed over
     compressor_running_draw_threshold  = 200     # CONST - Threshold for when compressor is running, the ac would draw more than this
-    compressor_max_low_draw_duration   = 45      # CONST - seconds before considering freezed over
-    defrost_cycle_duration             = 60 * 5  # CONST - seconds after a freezed over
 
     async def initialize(self):
 
@@ -65,12 +64,15 @@ class BaseClimateControl(Support):
         self.current_defrosting_timer           = 0    # seconds on the current defrosting timer
 
         # Entity-driven settings (overwritten by init_settings_members)
-        self.polling_interval               = None
-        self.min_time_fan_per_hour          = None
-        self.compressor_outside_temp_cutoff = None
-        self.disable_ac_compressor          = None
-        self.disable_external_ac_fan        = None
-        self.disable_freeze_warnings        = None
+        self.polling_interval                   = None
+        self.min_time_fan_per_hour              = None
+        self.compressor_outside_temp_cutoff     = None
+        self.compressor_low_draw_threshold      = None # Threshold for when the compressor is running but drawing low watts the usual, might be freezed over
+        self.compressor_max_low_draw_duration   = None # seconds before considering freezed over
+        self.defrost_cycle_duration             = None # Minutes after a freezed over to defrost
+        self.disable_ac_compressor              = None
+        self.disable_external_ac_fan            = None
+        self.disable_freeze_warnings            = None
 
         await self.init_settings_members(BaseClimateControl.base_settings_ents)
 
@@ -306,13 +308,13 @@ class BaseClimateControl(Support):
 
         # Currently in defrost mode
         if self.current_defrosting_timer > 0:
-            self.dev_log("Defrost active, defrosting cycle duration", {BaseClimateControl.defrost_cycle_duration})
+            self.dev_log("Defrost active, defrosting cycle duration", {self.defrost_cycle_duration * 60})
 
             self.current_defrosting_timer += self.polling_interval
             self.dev_log(f"Current defrosting timer", self.current_defrosting_timer)
 
             # Defrosting complete
-            if self.current_defrosting_timer > BaseClimateControl.defrost_cycle_duration:
+            if self.current_defrosting_timer > self.defrost_cycle_duration * 60:
                 self.dev_log("Defrosting complete")
                 self.current_defrosting_timer = 0
                 return False
@@ -325,7 +327,7 @@ class BaseClimateControl(Support):
             self.dev_log("AC current power draw", ac_watt)
 
             # Compressor running normally
-            if ac_watt >= BaseClimateControl.compressor_low_draw_threshold:
+            if ac_watt >= self.compressor_low_draw_threshold:
                 self.dev_log("Compressor draw above threshold")
                 self.compressor_low_draw_timer = 0
                 return False
@@ -337,14 +339,14 @@ class BaseClimateControl(Support):
                 return False
 
             # Compressor low draw detected
-            if ac_watt <= BaseClimateControl.compressor_low_draw_threshold:
+            if ac_watt <= self.compressor_low_draw_threshold:
                 self.dev_log("Compressor low draw detected, adding to timer")
 
                 self.compressor_low_draw_timer += self.polling_interval
                 self.dev_log("Compressor low draw timer", self.compressor_low_draw_timer)
 
                 # Low draw timer exceeded, start defrosting
-                if self.compressor_low_draw_timer > BaseClimateControl.compressor_max_low_draw_duration:
+                if self.compressor_low_draw_timer > self.compressor_max_low_draw_duration:
                     self.dev_log("Low draw duration exceeded, might have freezed over, starting defrost")
 
                     self.compressor_low_draw_timer = 0
