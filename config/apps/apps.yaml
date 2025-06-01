@@ -3,6 +3,12 @@
 #   module: hello
 #   class: HelloWorld
 
+sleep_climate_control:
+  module: sleep_climate_control
+  class: SleepClimateControl
+  is_active_ent: input_boolean.sleep_climate_control
+  debug: True
+  dev_logs: True
 ordinary_climate_control:
   module: ordinary_climate_control
   class: OrdinaryClimateControl

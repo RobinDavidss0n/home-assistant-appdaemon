@@ -27,7 +27,7 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 		await super().initialize()
 
-		self.settings_ents = [
+		settings_ents = [
             "input_number.ordinary_climate_control_variability_threshold",
             "input_number.ordinary_climate_control_temp_warning_threshold_cold",
 			"input_number.ordinary_climate_control_temp_warning_threshold_warm",
@@ -43,12 +43,14 @@ class OrdinaryClimateControl(BaseClimateControl):
 		self.cold_temp_warning_tracker = TempWarningTracker()
 		self.warm_temp_warning_tracker = TempWarningTracker()
 
-		await self.init_settings_members(self.settings_ents, "ordinary_")
+		await self.init_settings_members(settings_ents, "ordinary_")
 
 		await self.on_init_done()
 
 
-	async def start(self):		
+	async def start(self):
+		await self.call_service("input_boolean/turn_off", entity_id="input_boolean.sleep_climate_control")
+		await self.sleep(1)
 		await super().start()
 
 

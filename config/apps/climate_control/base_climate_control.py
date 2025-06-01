@@ -28,18 +28,6 @@ class BaseClimateControl(Support):
     ac_ext_fan_ent     = "switch.smart_socket_4"
     bedroom_heater_ent = "switch.smart_socket_1"
 
-    base_settings_ents = [
-        "input_number.climate_control_polling_interval",
-        "input_number.climate_control_min_time_fan_per_hour",
-        "input_number.climate_control_compressor_outside_temp_cutoff",
-        "input_number.climate_control_compressor_low_draw_threshold",
-        "input_number.climate_control_compressor_max_low_draw_duration",
-        "input_number.climate_control_defrost_cycle_duration",
-        "input_boolean.climate_control_disable_ac_compressor",
-        "input_boolean.climate_control_disable_external_ac_fan",
-        "input_boolean.climate_control_disable_freeze_warnings",
-    ]
-
     error_restart_interval = 60
     compressor_running_draw_threshold  = 200     # CONST - Threshold for when compressor is running, the ac would draw more than this
 
@@ -63,6 +51,18 @@ class BaseClimateControl(Support):
         self.compressor_low_draw_timer          = 0    # Used to track when compressor low draw started
         self.current_defrosting_timer           = 0    # seconds on the current defrosting timer
 
+        base_settings_ents = [
+            "input_number.climate_control_polling_interval",
+            "input_number.climate_control_min_time_fan_per_hour",
+            "input_number.climate_control_compressor_outside_temp_cutoff",
+            "input_number.climate_control_compressor_low_draw_threshold",
+            "input_number.climate_control_compressor_max_low_draw_duration",
+            "input_number.climate_control_defrost_cycle_duration",
+            "input_boolean.climate_control_disable_ac_compressor",
+            "input_boolean.climate_control_disable_external_ac_fan",
+            "input_boolean.climate_control_disable_freeze_warnings",
+        ]
+
         # Entity-driven settings (overwritten by init_settings_members)
         self.polling_interval                   = None
         self.min_time_fan_per_hour              = None
@@ -74,7 +74,7 @@ class BaseClimateControl(Support):
         self.disable_external_ac_fan            = None
         self.disable_freeze_warnings            = None
 
-        await self.init_settings_members(BaseClimateControl.base_settings_ents)
+        await self.init_settings_members(base_settings_ents)
 
 
     async def on_init_done(self):
@@ -93,14 +93,26 @@ class BaseClimateControl(Support):
             attr = ent.split(sub_class_prefix+"climate_control_")[1]
             val = await self.get_state(ent)
 
-            if attr.startswith("disable_"):
-                setattr(self, attr, val == "on")
-            else:
-                setattr(self, attr, float(val))
+            self.set_setting_attr(attr, val)
 
             self.listen_state(self.on_setting_change, ent, attr_name=attr)
             self.dev_log(attr, getattr(self, attr))
 
+    def on_setting_change(self, entity, attribute, old, new, kwargs):
+        attr = kwargs.get("attr_name")
+
+        if attr:
+            self.set_setting_attr(attr, new)
+            self.dev_log(f"Setting '{attr}' updated to", new)
+
+    def set_setting_attr(self, attr, val):
+            
+        if attr.startswith("disable_"):
+            setattr(self, attr, val == "on")
+        elif attr.endswith("_time"):
+            setattr(self, attr, str(val))
+        else:
+            setattr(self, attr, float(val))
 
     def on_is_active_ent_change(self, entity, attribute, old, new, kwargs):
         self.dev_log(f"Is active change from '{old}' to '{new}'")
@@ -116,18 +128,6 @@ class BaseClimateControl(Support):
     async def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs): 
         self.dev_log(f"AC power draw change from '{old}' to '{new}'")
         self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
-
-    def on_setting_change(self, entity, attribute, old, new, kwargs):
-        attr = kwargs.get("attr_name")
-
-        if attr:
-            if attr.startswith("disable_"):
-                value = new == "on"
-            else:
-                value = float(new)
-
-            setattr(self, attr, value)
-            self.dev_log(f"Setting '{attr}' updated to", value)
     
 
     async def start(self):
@@ -196,6 +196,10 @@ class BaseClimateControl(Support):
         self.dev_log("start_cooling")
 
         self.is_cooling = True
+
+        # Set bedroom heater to off
+        await self.set_bedroom_heater(OnOff.OFF)
+
         too_cold_for_compressor = await self.get_too_cold_for_compressor()
 
         # Set AC mode
@@ -222,9 +226,6 @@ class BaseClimateControl(Support):
 
         # Set external AC fan
         await self.handle_ac_ext_fan_operation_during_cooling()
-
-        # Set bedroom heater to off
-        await self.set_bedroom_heater(OnOff.OFF)
 
         self.is_any_fans_active = True
             
@@ -311,7 +312,7 @@ class BaseClimateControl(Support):
             self.dev_log("Defrost active, defrosting cycle duration", {self.defrost_cycle_duration * 60})
 
             self.current_defrosting_timer += self.polling_interval
-            self.dev_log(f"Current defrosting timer", self.current_defrosting_timer)
+            self.dev_log("Current defrosting timer", self.current_defrosting_timer)
 
             # Defrosting complete
             if self.current_defrosting_timer > self.defrost_cycle_duration * 60:
