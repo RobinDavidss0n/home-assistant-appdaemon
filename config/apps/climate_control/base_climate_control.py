@@ -1,7 +1,7 @@
 import appdaemon.plugins.hass.hassapi as hass
 from support import Support
 from enum import Enum
-import time
+import traceback
 
 class TempSensorsLocation(Enum):
     BEDROOM = "bedroom"
@@ -28,7 +28,7 @@ class BaseClimateControl(Support):
     ac_ext_fan_ent     = "switch.smart_socket_4"
     bedroom_heater_ent = "switch.smart_socket_1"
 
-    error_restart_interval = 60
+    error_restart_interval = 1
     compressor_running_draw_threshold  = 200     # CONST - Threshold for when compressor is running, the ac would draw more than this
 
     async def initialize(self):
@@ -141,19 +141,26 @@ class BaseClimateControl(Support):
 
         try:
             await self.base_loop(start_time)
+            
         except Exception as e:
-            self.log("Error caught\n", level="ERROR", exc_info=True)
+            self.log("Error caught:\n" + traceback.format_exc())
 
-            if(not self.debug):
-                
-                self.send_notification(f"An error happened: {e}")
-                self.log("Starting again in 5 seconds....")
+            try: 
+                if(not self.debug):
+                    await self.send_notification(f"An error happened: {e}")
+                    self.log(f"Starting again in {BaseClimateControl.error_restart_interval} seconds....")
+                    await self.restart(start_time)
 
-                await self.sleep(BaseClimateControl.error_restart_interval)
+            except:
+                self.log("Error caught in restart:\n" + traceback.format_exc())
+                if(not self.debug):
+                    await self.restart(start_time)
 
-                if(self.is_active and start_time == self.latest_start_time):
-                    self.create_task(self.start())
+    async def restart(self, start_time):
+        await self.sleep(BaseClimateControl.error_restart_interval)
 
+        if(self.is_active and start_time == self.latest_start_time):
+            self.create_task(self.start())
 
     async def base_loop(self, start_time):
 

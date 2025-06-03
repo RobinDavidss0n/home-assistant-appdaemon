@@ -3,17 +3,17 @@
 #   module: hello
 #   class: HelloWorld
 
-sleep_climate_control:
-  module: sleep_climate_control
-  class: SleepClimateControl
-  is_active_ent: input_boolean.sleep_climate_control
-  debug: True
-  dev_logs: True
+# sleep_climate_control:
+#   module: sleep_climate_control
+#   class: SleepClimateControl
+#   is_active_ent: input_boolean.sleep_climate_control
+#   debug: True
+#   dev_logs: True
 ordinary_climate_control:
   module: ordinary_climate_control
   class: OrdinaryClimateControl
   is_active_ent: input_boolean.ordinary_climate_control
-  debug: True
+  debug: False
   dev_logs: True
 # camera_patrol_camera_1:
 #   module: camera_patrol
