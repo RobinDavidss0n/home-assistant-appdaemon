@@ -66,7 +66,14 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 		diffs = []
 		for room in rooms:
-			diffs.append(await self.get_diff_temp_in_room(room))
+
+			roomDiff = await self.get_diff_temp_in_room(room)
+
+			if abs(roomDiff) < self.variability_threshold:
+				get_tracker_area(self.warm_temp_warning_tracker, room).temp_normalized_after_last_warning = True
+				get_tracker_area(self.cold_temp_warning_tracker, room).temp_normalized_after_last_warning = True
+
+			diffs.append(roomDiff)
 
 		highest_diff_index = 0
 		for i in range(1, len(diffs)):
@@ -110,10 +117,6 @@ class OrdinaryClimateControl(BaseClimateControl):
 		):
 			await self.send_temp_warning(TempWarningType.COLD, area, target_temp, current_temp)
 
-		else:
-			get_tracker_area(self.warm_temp_warning_tracker, area).temp_normalized_after_last_warning = True
-			get_tracker_area(self.cold_temp_warning_tracker, area).temp_normalized_after_last_warning = True
-
 		return diff
 
 
@@ -122,10 +125,17 @@ class OrdinaryClimateControl(BaseClimateControl):
 		if(self.disable_temp_warnings):
 			return
 		
-		tracker: TempWarningTrackerArea = getattr(self.warm_temp_warning_tracker, area.value)
+		coolTracker: TempWarningTrackerArea = getattr(self.cold_temp_warning_tracker, area.value)
+		warmTracker: TempWarningTrackerArea = getattr(self.warm_temp_warning_tracker, area.value)
+
+		tracker: TempWarningTrackerArea
 		
 		if(type == TempWarningType.COLD):
-			tracker: TempWarningTrackerArea = getattr(self.cold_temp_warning_tracker, area.value)
+			tracker: TempWarningTrackerArea = coolTracker
+			warmTracker.temp_normalized_after_last_warning = True
+		else:
+			tracker: TempWarningTrackerArea = warmTracker
+			coolTracker.temp_normalized_after_last_warning = True
 
 		timestamp = self.get_timestamp_in_seconds()
 
