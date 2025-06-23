@@ -1,4 +1,4 @@
-import appdaemon.plugins.hass.hassapi as hass
+import asyncio
 from support import Support
 from enum import Enum
 import traceback
@@ -40,10 +40,12 @@ class BaseClimateControl(Support):
         self.is_active = (await self.get_state(self.is_active_ent)) == "on"
         self.dev_log("is_active", self.is_active)
 
+
+        self.main_loop: asyncio.Task = None  # Used to stop the main loop task
+
         # --------------------------------------------------------------------
         # Mutable state initialization
         # --------------------------------------------------------------------        
-        self.latest_start_time                  = None  # Used to make sure we don't have multiple instances running
         self.is_cooling                         = False
         self.is_any_fans_active                 = False
         self.current_hour                       = None 
@@ -80,7 +82,7 @@ class BaseClimateControl(Support):
     async def on_init_done(self):
 
         if(self.is_active):
-            self.create_task(self.start())
+            self.start_by_task()
 
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
         self.listen_state(self.on_ac_power_draw_change, BaseClimateControl.ac_power_draw_ent)
@@ -119,29 +121,45 @@ class BaseClimateControl(Support):
 
         if new == "on":
             self.is_active = True
-            self.create_task(self.start())
+            self.start_by_task()
         else:
+            self.is_active = False
+
+            if self.main_loop is not None:
+                self.dev_log("Main loop saved, cancelling it.")
+                self.main_loop.cancel()
+                self.main_loop = None
+
+            self.dev_log("Setting AC mode to OFF and external fan to OFF")
             self.create_task(self.set_ac_ext_fan(OnOff.OFF))
             self.create_task(self.set_ac_mode(ACModes.OFF))
-            self.is_active = False
 
     async def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs): 
         self.dev_log(f"AC power draw change from '{old}' to '{new}'")
         self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
-    
+
+    def start_by_task(self):
+
+        if self.main_loop is not None:
+            self.log("Loop already exists, cancelling it")
+            self.main_loop.cancel()
+            self.main_loop = None
+
+        self.main_loop = self.create_task(self.start())
+        self.dev_log("Main loop started")
 
     async def start(self):
 
-        start_time = self.get_timestamp()
-        self.latest_start_time = start_time
         self.current_defrosting_timer = 0
         self.compressor_low_draw_timer = 0
 
-        self.dev_log("Starting climate control, start_time", start_time)
+        self.dev_log("Starting climate control")
 
         try:
-            await self.base_loop(start_time)
-            
+            await self.base_loop()
+
+        except asyncio.CancelledError: 
+            return
         except Exception as e:
             self.log("Error caught:\n" + traceback.format_exc())
 
@@ -149,22 +167,24 @@ class BaseClimateControl(Support):
                 if(not self.debug):
                     await self.send_notification(f"An error happened: {e}")
                     self.log(f"Starting again in {BaseClimateControl.error_restart_interval} seconds....")
-                    await self.restart(start_time)
-
+                    await self.restart()
             except:
                 self.log("Error caught in restart:\n" + traceback.format_exc())
                 if(not self.debug):
-                    await self.restart(start_time)
+                    await self.restart()
+        finally:
+            self.main_loop = None
 
-    async def restart(self, start_time):
+    async def restart(self):
         await self.sleep(BaseClimateControl.error_restart_interval)
 
-        if(self.is_active and start_time == self.latest_start_time):
-            self.create_task(self.start())
+        if(self.is_active):
+            self.start_by_task()
 
-    async def base_loop(self, start_time):
+    async def base_loop(self):
 
-        while(self.is_active and start_time == self.latest_start_time):
+        while(self.is_active):
+            self.dev_log("Base loop iteration started")
             await self.update_fan_runtime()
             await self.loop_logic()
             await self.sleep(self.polling_interval)
