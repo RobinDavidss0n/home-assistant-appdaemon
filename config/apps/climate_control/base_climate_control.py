@@ -37,11 +37,9 @@ class BaseClimateControl(Support):
         self.dev_logs       = bool(self.args.get("dev_logs", False))
         
         self.is_active_ent  = self.args.get("is_active_ent")
-        self.is_active = (await self.get_state(self.is_active_ent)) == "on"
-        self.dev_log("is_active", self.is_active)
 
-
-        self.main_loop: asyncio.Task = None  # Used to stop the main loop task
+        # Used to stop the main loop task
+        self.loops: set[asyncio.Task] = set()
 
         # --------------------------------------------------------------------
         # Mutable state initialization
@@ -81,7 +79,7 @@ class BaseClimateControl(Support):
 
     async def on_init_done(self):
 
-        if(self.is_active):
+        if await self.get_is_active():
             self.start_by_task()
 
         self.listen_state(self.on_is_active_ent_change, self.is_active_ent)
@@ -99,6 +97,9 @@ class BaseClimateControl(Support):
 
             self.listen_state(self.on_setting_change, ent, attr_name=attr)
             self.dev_log(attr, getattr(self, attr))
+
+    async def get_is_active(self):
+        return (await self.get_state(self.is_active_ent)) == "on"
 
     def on_setting_change(self, entity, attribute, old, new, kwargs):
         attr = kwargs.get("attr_name")
@@ -120,33 +121,34 @@ class BaseClimateControl(Support):
         self.dev_log(f"Is active change from '{old}' to '{new}'")
 
         if new == "on":
-            self.is_active = True
             self.start_by_task()
         else:
-            self.is_active = False
-
-            if self.main_loop is not None:
-                self.dev_log("Main loop saved, cancelling it.")
-                self.main_loop.cancel()
-                self.main_loop = None
+            self.stop()
 
             self.dev_log("Setting AC mode to OFF and external fan to OFF")
             self.create_task(self.set_ac_ext_fan(OnOff.OFF))
             self.create_task(self.set_ac_mode(ACModes.OFF))
 
     async def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs): 
-        self.dev_log(f"AC power draw change from '{old}' to '{new}'")
-        self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
+        
+        if await self.get_is_active():
+            self.dev_log(f"AC power draw change from '{old}' to '{new}'")
+            self.create_task(self.handle_ac_ext_fan_operation_during_cooling())
 
     def start_by_task(self):
+        self.dev_log("Starting loop by task")
 
-        if self.main_loop is not None:
-            self.log("Loop already exists, cancelling it")
-            self.main_loop.cancel()
-            self.main_loop = None
+        self.stop()
+        self.loops.add(self.create_task(self.start()))
 
-        self.main_loop = self.create_task(self.start())
-        self.dev_log("Main loop started")
+    def stop(self):
+        self.dev_log("Stopping climate control")
+
+        for loop in self.loops:
+            self.dev_log("Cancelling old loop", id(loop))
+            loop.cancel()
+
+        self.loops.clear()
 
     async def start(self):
 
@@ -172,19 +174,17 @@ class BaseClimateControl(Support):
                 self.log("Error caught in restart:\n" + traceback.format_exc())
                 if(not self.debug):
                     await self.restart()
-        finally:
-            self.main_loop = None
 
     async def restart(self):
         await self.sleep(BaseClimateControl.error_restart_interval)
 
-        if(self.is_active):
+        if await self.get_is_active():
             self.start_by_task()
 
     async def base_loop(self):
 
-        while(self.is_active):
-            self.dev_log("Base loop iteration started")
+        while(await self.get_is_active()):
+            self.dev_log("Base loop iteration started with id:", id(self))
             await self.update_fan_runtime()
             await self.loop_logic()
             await self.sleep(self.polling_interval)
@@ -289,9 +289,6 @@ class BaseClimateControl(Support):
              self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
     async def handle_ac_ext_fan_operation_during_cooling(self):
-
-        if not self.is_active:
-            return
         
         # If currently in defrosting mode, no need to change external fan state
         if self.current_defrosting_timer > 0:
