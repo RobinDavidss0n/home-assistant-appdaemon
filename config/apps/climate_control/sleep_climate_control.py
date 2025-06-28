@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 class SleepClimateControl(BaseClimateControl):
 
     next_alarm_time_ent = "sensor.robins_oneplus_13_next_alarm"
-    max_alarm_retries = 5
+    max_alarm_retries = 3
     default_alarm_time = 9 # Default alarm time if not set (hour in 24-hour format)
 
 
@@ -16,6 +16,7 @@ class SleepClimateControl(BaseClimateControl):
         # Mutable state initialization
         # --------------------------------------------------------------------   
         self.alarm_dt: datetime = None
+        self.already_tried_getting_alarm = False
 
         self.settings_ents = [
             "input_number.sleep_climate_control_target_evening_temp",
@@ -39,8 +40,10 @@ class SleepClimateControl(BaseClimateControl):
 
     async def start(self):
 
+        self.alarm_dt = None
+        self.already_tried_getting_alarm = False
+
         await self.start_cooling()
-        await self.update_alarm_dt()
         await self.call_service("input_boolean/turn_off", entity_id="input_boolean.ordinary_climate_control")
         await self.sleep(1)
         await super().start()
@@ -64,6 +67,9 @@ class SleepClimateControl(BaseClimateControl):
 
         # Warmup time
         self.dev_log("Warmup time started, using morning target temp.")
+        if self.alarm_dt is None and not self.already_tried_getting_alarm:
+            await self.update_alarm_dt()
+            self.already_tried_getting_alarm = True
         await self.handle_cooling_or_heating(bedroom_temp, await self.calculate_warmup_target())
 
 
@@ -154,7 +160,7 @@ class SleepClimateControl(BaseClimateControl):
         now_dt = self.get_datetime_in_local_time()
         self.dev_log("now_dt", now_dt)
 
-        if retries > max_retries:
+        if retries >= max_retries:
             # Using default alarm time after waiting 5 minutes
             self.alarm_dt = datetime.combine(now_dt.date(), time(SleepClimateControl.default_alarm_time)).astimezone()
             self.dev_log(f"Using default alarm time: {self.alarm_dt}")
@@ -180,11 +186,11 @@ class SleepClimateControl(BaseClimateControl):
         alarm_diff = self.alarm_dt - now_dt
         self.dev_log("alarm_diff", alarm_diff)
 
-        if alarm_diff > timedelta(hours=12):
+        if alarm_diff > timedelta(hours=6):
 
-            self.dev_log("Alarm time is more than 12 hours away.")
+            self.dev_log("Alarm time is more than 6 hours away.")
             if retries == 0:
-                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 12 hours away, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
+                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 6 hours away, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
 
             if retries < max_retries:
                 await self.sleep(5)
