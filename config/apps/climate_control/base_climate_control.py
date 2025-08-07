@@ -29,7 +29,7 @@ class BaseClimateControl(Support):
     bedroom_heater_ent = "switch.smart_socket_1"
 
     error_restart_interval = 1
-    compressor_running_draw_threshold  = 200     # CONST - Threshold for when compressor is running, the ac would draw more than this
+    compressor_running_draw_threshold  = 75     # CONST - Threshold for when compressor is running, the ac would draw more than this
 
     async def initialize(self):
 
@@ -289,6 +289,11 @@ class BaseClimateControl(Support):
              self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
     async def handle_ac_ext_fan_operation_during_cooling(self):
+
+        #TODO remove this and set fan to wanted speed in all scenarios
+        await self.set_ac_ext_fan(OnOff.ON)
+        self.dev_log("External Fan Always On")
+        return
         
         # If currently in defrosting mode, no need to change external fan state
         if self.current_defrosting_timer > 0:

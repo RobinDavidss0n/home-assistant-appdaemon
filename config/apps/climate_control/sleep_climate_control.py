@@ -23,7 +23,8 @@ class SleepClimateControl(BaseClimateControl):
             "input_number.sleep_climate_control_target_morning_temp",
             "input_number.sleep_climate_control_warmup_cycles",
             "input_number.sleep_climate_control_variability_threshold",
-            "input_datetime.sleep_climate_control_warmup_time"
+            "input_datetime.sleep_climate_control_warmup_time",
+            "input_boolean.sleep_climate_control_disable_heater"
         ]
         
         # Entity-driven settings (overwritten by init_settings_members)
@@ -32,6 +33,7 @@ class SleepClimateControl(BaseClimateControl):
         self.warmup_cycles 			= None
         self.warmup_time 			= None # time from ha in hh:mm:ss format
         self.variability_threshold	= None
+        self.disable_heater     	= None
 
         await self.init_settings_members(self.settings_ents, "sleep_")
 
@@ -43,8 +45,8 @@ class SleepClimateControl(BaseClimateControl):
         self.alarm_dt = None
         self.already_tried_getting_alarm = False
 
-        await self.start_cooling()
         await self.call_service("input_boolean/turn_off", entity_id="input_boolean.ordinary_climate_control")
+        await self.start_cooling()
         await self.sleep(1)
         await super().start()
 
@@ -88,6 +90,11 @@ class SleepClimateControl(BaseClimateControl):
             await self.start_cooling()
         else:
             self.dev_log("Lower than target, starting heating.")
+
+            if self.disable_heater:
+                self.dev_log("Heater is disabled, do not start heating.")
+                return
+
             await self.stop_cooling()
             await self.set_bedroom_heater(OnOff.ON)
 
