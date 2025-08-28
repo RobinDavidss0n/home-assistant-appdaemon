@@ -96,12 +96,12 @@ class SleepClimateControl(BaseClimateControl):
             await self.start_cooling()
         else:
             self.dev_log("Lower than target, starting heating.")
+            await self.stop_cooling()
 
             if self.disable_heater:
                 self.dev_log("Heater is disabled, do not start heating.")
                 return
 
-            await self.stop_cooling()
             await self.set_bedroom_heater(OnOff.ON)
 
 
