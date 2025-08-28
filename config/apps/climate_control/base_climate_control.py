@@ -53,7 +53,7 @@ class BaseClimateControl(Support):
 
         base_settings_ents = [
             "input_number.climate_control_polling_interval",
-            "input_number.climate_control_min_time_fan_per_hour",
+            # "input_number.climate_control_min_time_fan_per_hour",
             "input_number.climate_control_compressor_outside_temp_cutoff",
             "input_number.climate_control_compressor_low_draw_threshold",
             "input_number.climate_control_compressor_max_low_draw_duration",
@@ -65,7 +65,6 @@ class BaseClimateControl(Support):
 
         # Entity-driven settings (overwritten by init_settings_members)
         self.polling_interval                   = None
-        self.min_time_fan_per_hour              = None
         self.compressor_outside_temp_cutoff     = None
         self.compressor_low_draw_threshold      = None # Threshold for when the compressor is running but drawing low watts the usual, might be freezed over
         self.compressor_max_low_draw_duration   = None # seconds before considering freezed over
@@ -73,6 +72,9 @@ class BaseClimateControl(Support):
         self.disable_ac_compressor              = None
         self.disable_external_ac_fan            = None
         self.disable_freeze_warnings            = None
+
+        # Is overwritten by subclasses
+        self.min_time_fan_per_hour              = None
 
         await self.init_settings_members(base_settings_ents)
 

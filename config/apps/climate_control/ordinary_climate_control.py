@@ -32,7 +32,10 @@ class OrdinaryClimateControl(BaseClimateControl):
             "input_number.ordinary_climate_control_temp_warning_threshold_cold",
 			"input_number.ordinary_climate_control_temp_warning_threshold_warm",
             "input_number.ordinary_climate_control_repeated_warnings_block_timer",
-			"input_boolean.ordinary_climate_control_disable_temp_warnings"
+			"input_boolean.ordinary_climate_control_disable_temp_warnings",
+			
+			# Overrides the base class
+            "input_number.ordinary_climate_control_min_time_fan_per_hour",
         ]
 		self.variability_threshold 			= None
 		self.temp_warning_threshold_cold 	= None
@@ -40,6 +43,9 @@ class OrdinaryClimateControl(BaseClimateControl):
 		self.repeated_warnings_block_timer 	= None
 		self.disable_temp_warnings			= None
 
+		# Overrides base class
+		self.min_time_fan_per_hour	= None
+	
 		self.cold_temp_warning_tracker = TempWarningTracker()
 		self.warm_temp_warning_tracker = TempWarningTracker()
 

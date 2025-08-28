@@ -24,7 +24,10 @@ class SleepClimateControl(BaseClimateControl):
             "input_number.sleep_climate_control_warmup_cycles",
             "input_number.sleep_climate_control_variability_threshold",
             "input_datetime.sleep_climate_control_warmup_time",
-            "input_boolean.sleep_climate_control_disable_heater"
+            "input_boolean.sleep_climate_control_disable_heater",
+
+            # Overrides the base class
+            "input_number.sleep_climate_control_min_time_fan_per_hour",
         ]
         
         # Entity-driven settings (overwritten by init_settings_members)
@@ -34,6 +37,9 @@ class SleepClimateControl(BaseClimateControl):
         self.warmup_time 			= None # time from ha in hh:mm:ss format
         self.variability_threshold	= None
         self.disable_heater     	= None
+
+        # Overrides base class
+        self.min_time_fan_per_hour	= None
 
         await self.init_settings_members(self.settings_ents, "sleep_")
 
