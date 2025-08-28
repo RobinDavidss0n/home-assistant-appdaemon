@@ -289,11 +289,6 @@ class BaseClimateControl(Support):
              self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
     async def handle_ac_ext_fan_operation_during_cooling(self):
-
-        #TODO remove this and set fan to wanted speed in all scenarios
-        await self.set_ac_ext_fan(OnOff.ON)
-        self.dev_log("External Fan Always On")
-        return
         
         # If currently in defrosting mode, no need to change external fan state
         if self.current_defrosting_timer > 0:
@@ -310,27 +305,31 @@ class BaseClimateControl(Support):
             await self.set_ac_ext_fan(OnOff.OFF)
             return
         
-        too_cold_for_compressor = await self.get_too_cold_for_compressor()
-        if too_cold_for_compressor:
-            self.dev_log("Too cold outside to run compressor, setting external fan to ON")
-            await self.set_ac_ext_fan(OnOff.ON)
-            return
+        self.dev_log("Is cooling and ext fan not disabled. Setting external fan to ON")
+        await self.set_ac_ext_fan(OnOff.ON)
+        return
         
-        if self.disable_ac_compressor:
-            self.dev_log("Compressor disabled, setting external fan to ON")
-            await self.set_ac_ext_fan(OnOff.ON)
-            return
-
-        ac_current_power_draw = await self.get_ac_current_power_draw()
-        self.dev_log("AC current power draw", ac_current_power_draw)
-
-        if ac_current_power_draw > BaseClimateControl.compressor_running_draw_threshold:
-            self.dev_log("Compressor running, setting external fan to ON")
-            await self.set_ac_ext_fan(OnOff.ON)
-            return
+        # too_cold_for_compressor = await self.get_too_cold_for_compressor()
+        # if too_cold_for_compressor:
+        #     self.dev_log("Too cold outside to run compressor, setting external fan to ON")
+        #     await self.set_ac_ext_fan(OnOff.ON)
+        #     return
         
-        self.dev_log("Compressor not running, turning OFF external fan")
-        await self.set_ac_ext_fan(OnOff.OFF)
+        # if self.disable_ac_compressor:
+        #     self.dev_log("Compressor disabled, setting external fan to ON")
+        #     await self.set_ac_ext_fan(OnOff.ON)
+        #     return
+
+        # ac_current_power_draw = await self.get_ac_current_power_draw()
+        # self.dev_log("AC current power draw", ac_current_power_draw)
+
+        # if ac_current_power_draw > BaseClimateControl.compressor_running_draw_threshold:
+        #     self.dev_log("Compressor running, setting external fan to ON")
+        #     await self.set_ac_ext_fan(OnOff.ON)
+        #     return
+        
+        # self.dev_log("Compressor not running, turning OFF external fan")
+        # await self.set_ac_ext_fan(OnOff.OFF)
 
 
     async def check_for_radiator_freeze(self) -> bool:
