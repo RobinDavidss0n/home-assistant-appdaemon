@@ -27,6 +27,7 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 		await super().initialize()
 
+		# NOTE time input needs to end with _time for the conversions to work
 		settings_ents = [
             "input_number.ordinary_climate_control_variability_threshold",
             "input_number.ordinary_climate_control_temp_warning_threshold_cold",

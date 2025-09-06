@@ -37,3 +37,27 @@ class Support(hass.Hass):
                     self.log(f"-> {msg}: {round(args, 2)}")
                 else:
                     self.log(f"-> {msg}: {args}")
+
+
+    def is_weekend(self, dt=None):
+        if dt is None:
+            dt = self.get_datetime_in_local_time()
+        
+        return dt.weekday() >= 5
+
+    def get_time_from_ha_time_input(self, time_input):
+        return datetime.strptime(str(time_input), "%H:%M:%S").time()
+    
+    def get_datetime_from_ha_time_input(self, time_input):
+        """
+        Parses a time string and returns a timezone-aware datetime for today.
+        """
+        now_dt = datetime.now().astimezone()
+        time_obj = self.get_time_from_ha_time_input(time_input)
+
+        return now_dt.replace(
+            hour=time_obj.hour,
+            minute=time_obj.minute,
+            second=time_obj.second,
+            microsecond=0
+        )

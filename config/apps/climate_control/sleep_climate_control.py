@@ -18,13 +18,18 @@ class SleepClimateControl(BaseClimateControl):
         self.alarm_dt: datetime = None
         self.already_tried_getting_alarm = False
 
+        # NOTE time input needs to end with _time for the conversions to work
         self.settings_ents = [
             "input_number.sleep_climate_control_target_evening_temp",
             "input_number.sleep_climate_control_target_morning_temp",
             "input_number.sleep_climate_control_warmup_cycles",
             "input_number.sleep_climate_control_variability_threshold",
-            "input_datetime.sleep_climate_control_warmup_time",
+            "input_datetime.sleep_climate_control_warmup_weekdays_time",
+            "input_datetime.sleep_climate_control_warmup_weekend_time",
+            "input_datetime.sleep_climate_control_wakeup_weekdays_time",
+            "input_datetime.sleep_climate_control_wakeup_weekend_time",
             "input_boolean.sleep_climate_control_disable_heater",
+            "input_boolean.sleep_climate_control_disable_alarm_wakeup",
 
             # Overrides the base class
             "input_number.sleep_climate_control_min_time_fan_per_hour",
@@ -34,9 +39,13 @@ class SleepClimateControl(BaseClimateControl):
         self.target_evening_temp 	= None
         self.target_morning_temp 	= None
         self.warmup_cycles 			= None
-        self.warmup_time 			= None # time from ha in hh:mm:ss format
+        self.warmup_weekdays_time 	= None # time from ha in hh:mm:ss format
+        self.warmup_weekend_time 	= None # time from ha in hh:mm:ss format
+        self.wakeup_weekdays_time 	= None # time from ha in hh:mm:ss format
+        self.wakeup_weekend_time 	= None # time from ha in hh:mm:ss format
         self.variability_threshold	= None
         self.disable_heater     	= None
+        self.disable_alarm_wakeup   = None
 
         # Overrides base class
         self.min_time_fan_per_hour	= None
@@ -63,7 +72,7 @@ class SleepClimateControl(BaseClimateControl):
         bedroom_temp = await self.get_temp(TempSensorsLocation.BEDROOM)
 
         now_time = self.get_datetime_in_local_time().time()
-        warmup_time = datetime.strptime(str(self.warmup_time), "%H:%M:%S").time()
+        warmup_time = self.get_warmup_time()
 
         self.dev_log(f"Current time: {now_time}, Warmup time: {warmup_time}")
 
@@ -75,9 +84,7 @@ class SleepClimateControl(BaseClimateControl):
 
         # Warmup time
         self.dev_log("Warmup time started, using morning target temp.")
-        if self.alarm_dt is None and not self.already_tried_getting_alarm:
-            await self.update_alarm_dt()
-            self.already_tried_getting_alarm = True
+
         await self.handle_cooling_or_heating(bedroom_temp, await self.calculate_warmup_target())
 
 
@@ -107,21 +114,22 @@ class SleepClimateControl(BaseClimateControl):
 
     async def calculate_warmup_target(self):
 
+        wakeup_time = self.get_wakeup_time()
         now_dt = self.get_datetime_in_local_time()
 
-        if now_dt >= self.alarm_dt:
+        if now_dt >= wakeup_time:
             # If the current time is past the alarm time, return the morning target temperature
             self.dev_log("Current time is past the alarm time, returning morning target temperature.")
             return self.target_morning_temp
         
         # Create a datetime object for the start of the warmup period.
         # Use the date from now and the time from warmup_time (string "HH:MM:SS").
-        warmup_time_t = datetime.strptime(self.warmup_time, "%H:%M:%S").time()
+        warmup_time_t = self.get_warmup_time()
         # Use the timezone from now_dt to localize the start_time_dt
         start_time_dt = datetime.combine(now_dt.date(), warmup_time_t).replace(tzinfo=now_dt.tzinfo)
 
         # Calculate total warmup duration in seconds
-        warmup_duration_s = (self.alarm_dt - start_time_dt).total_seconds()
+        warmup_duration_s = (wakeup_time - start_time_dt).total_seconds()
 
         # Check for warm-up span zero or negative (mis-config)
         if warmup_duration_s <= 0:
@@ -165,6 +173,28 @@ class SleepClimateControl(BaseClimateControl):
         return target_temp
 
 
+    async def get_wakeup_time(self):
+
+        if(not self.disable_alarm_wakeup):
+            if self.alarm_dt is None and not self.already_tried_getting_alarm:
+                await self.update_alarm_dt()
+                self.already_tried_getting_alarm = True
+                return self.alarm_dt
+
+        if self.is_weekend():
+            return self.get_datetime_from_ha_time_input(self.wakeup_weekend_time)
+        else:
+            return self.get_datetime_from_ha_time_input(self.wakeup_weekdays_time)
+
+
+    def get_warmup_time(self):
+
+        if(self.is_weekend()):
+            return self.get_time_from_ha_time_input(self.warmup_weekend_time)
+        else:
+            return self.get_time_from_ha_time_input(self.warmup_weekdays_time)
+        
+
     async def update_alarm_dt(self, retries = 0):
         self.dev_log("update_alarm_dt")
 
@@ -199,11 +229,11 @@ class SleepClimateControl(BaseClimateControl):
         alarm_diff = self.alarm_dt - now_dt
         self.dev_log("alarm_diff", alarm_diff)
 
-        if alarm_diff > timedelta(hours=6):
+        if alarm_diff > timedelta(hours=8):
 
-            self.dev_log("Alarm time is more than 6 hours away.")
+            self.dev_log("Alarm time is more than 8 hours away.")
             if retries == 0:
-                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 6 hours away, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
+                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 8 hours away, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
 
             if retries < max_retries:
                 await self.sleep(5)

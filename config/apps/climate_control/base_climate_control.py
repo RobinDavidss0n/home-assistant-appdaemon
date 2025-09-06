@@ -51,6 +51,7 @@ class BaseClimateControl(Support):
         self.compressor_low_draw_timer          = 0    # Used to track when compressor low draw started
         self.current_defrosting_timer           = 0    # seconds on the current defrosting timer
 
+        # NOTE time input needs to end with _time for the conversions to work
         base_settings_ents = [
             "input_number.climate_control_polling_interval",
             # "input_number.climate_control_min_time_fan_per_hour",
