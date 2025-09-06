@@ -5,8 +5,6 @@ class SleepClimateControl(BaseClimateControl):
 
     next_alarm_time_ent = "sensor.robins_oneplus_13_next_alarm"
     max_alarm_retries = 3
-    default_alarm_time = 9 # Default alarm time if not set (hour in 24-hour format)
-
 
     async def initialize(self):
 
@@ -240,7 +238,7 @@ class SleepClimateControl(BaseClimateControl):
 
             self.dev_log("Alarm time is more than 8 hours away.")
             if retries == 0:
-                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 8 hours away, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
+                await self.send_mobile_notification("Sleep Climate Control", f"Alarm time is more than 8 hours away, retrying {max_retries} times before using static set time.")
 
             if retries < max_retries:
                 await self.sleep(5)
