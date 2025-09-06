@@ -114,7 +114,7 @@ class SleepClimateControl(BaseClimateControl):
 
     async def calculate_warmup_target(self):
 
-        wakeup_time = self.get_wakeup_time()
+        wakeup_time = await self.get_wakeup_time()
         now_dt = self.get_datetime_in_local_time()
 
         if now_dt >= wakeup_time:
@@ -204,9 +204,16 @@ class SleepClimateControl(BaseClimateControl):
         self.dev_log("now_dt", now_dt)
 
         if retries >= max_retries:
-            # Using default alarm time after waiting 5 minutes
-            self.alarm_dt = datetime.combine(now_dt.date(), time(SleepClimateControl.default_alarm_time)).astimezone()
-            self.dev_log(f"Using default alarm time: {self.alarm_dt}")
+            self.dev_log("Alarm fetch failed. Using manual weekday/weekend time as fallback.")
+
+            # Determine which manual time to use
+            if self.is_weekend():
+                fallback_time_str = self.wakeup_weekend_time
+            else:
+                fallback_time_str = self.wakeup_weekdays_time
+            
+            # Use your existing helper to create the full datetime object
+            self.alarm_dt = self.get_datetime_from_ha_time_input(fallback_time_str)
             return
         
         alarm_string = await self.get_state(self.next_alarm_time_ent)
@@ -215,7 +222,7 @@ class SleepClimateControl(BaseClimateControl):
         if alarm_string == "unavailable":
 
             if retries == 0:
-                await self.send_mobile_notification("Sleep Climate Control", f"No alarm set, retrying {max_retries} times before using default {SleepClimateControl.default_alarm_time}:00")
+                await self.send_mobile_notification("Sleep Climate Control", f"No alarm set, retrying {max_retries} times before using static set time.")
 
             if retries < max_retries:
                 await self.sleep(5)

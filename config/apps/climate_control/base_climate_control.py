@@ -28,7 +28,7 @@ class BaseClimateControl(Support):
     ac_ext_fan_ent     = "switch.smart_socket_4"
     bedroom_heater_ent = "switch.smart_socket_1"
 
-    error_restart_interval = 1
+    error_restart_interval = 10
     compressor_running_draw_threshold  = 75     # CONST - Threshold for when compressor is running, the ac would draw more than this
 
     async def initialize(self):
