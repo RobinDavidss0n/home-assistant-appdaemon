@@ -57,13 +57,11 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 	async def start(self):
 		await self.call_service("input_boolean/turn_off", entity_id="input_boolean.sleep_climate_control")
-		await self.sleep(1)
+		await self.sleep(2)
 		await super().start()
 
 
 	async def loop_logic(self):
-
-		self.dev_log("Checking temp...")
 
 		rooms = [
 			TempSensorsLocation.BEDROOM,
@@ -93,12 +91,12 @@ class OrdinaryClimateControl(BaseClimateControl):
 		self.dev_log(f"Warmest room {warmest_room.value} | Diff: {round(warmest_rooms_diff, 2)}")
 
 		if(warmest_rooms_diff > self.variability_threshold):
-			self.dev_log("Warmest room too hot, turning on cooling.")
+			self.dev_log("Warmest room too hot")
 			await self.start_cooling()		
 		else:
-			self.dev_log("Warmest room not hot enough, turning off cooling.")
-			await self.stop_cooling()		
-	
+			self.dev_log("Warmest room not hot enough")
+			await self.stop_cooling()
+
 
 	async def get_diff_temp_in_room(self, area: TempSensorsLocation):
 

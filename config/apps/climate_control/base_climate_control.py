@@ -128,10 +128,6 @@ class BaseClimateControl(Support):
         else:
             self.stop()
 
-            self.dev_log("Setting AC mode to OFF and external fan to OFF")
-            self.create_task(self.set_ac_ext_fan(OnOff.OFF))
-            self.create_task(self.set_ac_mode(ACModes.OFF))
-
     async def on_ac_power_draw_change(self, entity, attribute, old, new, kwargs): 
         
         if await self.get_is_active():
@@ -187,11 +183,12 @@ class BaseClimateControl(Support):
     async def base_loop(self):
 
         while(await self.get_is_active()):
-            self.dev_log("Base loop iteration started with id:", id(self))
+            self.dev_log(f"\n=\n BASE LOOP ({id(self)})\n=")
             await self.update_fan_runtime()
             await self.loop_logic()
             await self.sleep(self.polling_interval)
 
+    # Loop logic is implemented by subclasses
     async def loop_logic(self):
         return
     
@@ -206,15 +203,18 @@ class BaseClimateControl(Support):
         return float(await self.get_state(f"input_number.ordinary_climate_control_target_temp_{area.value}"))
 
     async def set_ac_mode(self, mode: ACModes):
+        self.dev_log(f"AC mode -> {mode.value}")
         await self.call_service("select/select_option", entity_id=BaseClimateControl.ac_ent, option=mode.value)
 
     async def get_ac_current_power_draw(self):
         return float(await self.get_state(BaseClimateControl.ac_power_draw_ent))
 
     async def set_ac_ext_fan(self, mode: OnOff):
+        self.dev_log(f"AC external fan -> {mode.value}")
         await self.call_service(f"switch/turn_{mode.value}", entity_id=BaseClimateControl.ac_ext_fan_ent)
 
     async def set_bedroom_heater(self, mode: OnOff):
+        self.dev_log(f"Bedroom heater -> {mode.value}")
         await self.call_service(f"switch/turn_{mode.value}", entity_id=BaseClimateControl.bedroom_heater_ent)
 
     async def get_too_cold_for_compressor(self):
@@ -244,14 +244,12 @@ class BaseClimateControl(Support):
                 await self.set_ac_ext_fan(OnOff.ON)
                 return
 
-            self.dev_log("Setting AC to COOL")
             await self.set_ac_mode(ACModes.COOL)
 
         else:
             if self.disable_ac_compressor:  self.dev_log("Compressor disabled in settings.")
             if too_cold_for_compressor:     self.dev_log("Too cold outside to run compressor.")
 
-            self.dev_log("Setting AC to FAN")
             await self.set_ac_mode(ACModes.FAN)
 
         # Set external AC fan
@@ -278,6 +276,7 @@ class BaseClimateControl(Support):
             self.is_any_fans_active = False
 
         await self.set_ac_ext_fan(OnOff.OFF)
+        await self.set_bedroom_heater(OnOff.OFF)
 
     
     async def update_fan_runtime(self):
@@ -292,6 +291,7 @@ class BaseClimateControl(Support):
              self.fan_runtime_mins_current_hour += self.polling_interval / 60
 
     async def handle_ac_ext_fan_operation_during_cooling(self):
+        self.dev_log("handle_ac_ext_fan_operation_during_cooling")
         
         # If currently in defrosting mode, no need to change external fan state
         if self.current_defrosting_timer > 0:
@@ -299,16 +299,15 @@ class BaseClimateControl(Support):
             return
 
         if not self.is_cooling:
-            self.dev_log("Not cooling, setting external fan to OFF")
+            self.dev_log("Not cooling")
             await self.set_ac_ext_fan(OnOff.OFF)
             return
 
         if(self.disable_external_ac_fan):
-            self.dev_log("External AC Fan disabled, setting external fan to OFF")
+            self.dev_log("External AC Fan disabled")
             await self.set_ac_ext_fan(OnOff.OFF)
             return
         
-        self.dev_log("Is cooling and ext fan not disabled. Setting external fan to ON")
         await self.set_ac_ext_fan(OnOff.ON)
         return
         
@@ -351,7 +350,7 @@ class BaseClimateControl(Support):
                 self.current_defrosting_timer = 0
                 return False
             
-            self.dev_log("Defrosting in progress - IS freezed, returning True")
+            self.dev_log("Defrosting in progress")
             return True
 
         else:
