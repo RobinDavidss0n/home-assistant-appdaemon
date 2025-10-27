@@ -1,5 +1,5 @@
 from enum import Enum
-from base_climate_control import BaseClimateControl, TempSensorsLocation
+from base_climate_control import BaseClimateControl, TempSensorsLocation, OnOff
 from dataclasses import dataclass, field
 from typing import Optional, cast
 
@@ -90,12 +90,20 @@ class OrdinaryClimateControl(BaseClimateControl):
 
 		self.dev_log(f"Warmest room {warmest_room.value} | Diff: {round(warmest_rooms_diff, 2)}")
 
+		if abs(warmest_rooms_diff) < self.variability_threshold:
+			self.dev_log("Warmest room within variability threshold")
+			await self.stop_cooling()
+			await self.set_bedroom_heater(OnOff.OFF)
+			return
+
 		if(warmest_rooms_diff > self.variability_threshold):
 			self.dev_log("Warmest room too hot")
-			await self.start_cooling()		
+			await self.start_cooling()       
+        
 		else:
 			self.dev_log("Warmest room not hot enough")
 			await self.stop_cooling()
+			# Do not touch the heater, allowing it to heat if temp is lower than target
 
 
 	async def get_diff_temp_in_room(self, area: TempSensorsLocation):

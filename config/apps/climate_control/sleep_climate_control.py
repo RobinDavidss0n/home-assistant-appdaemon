@@ -59,7 +59,7 @@ class SleepClimateControl(BaseClimateControl):
         self.already_tried_getting_alarm = False
 
         await self.call_service("input_boolean/turn_off", entity_id="input_boolean.ordinary_climate_control")
-        await self.sleep(2)
+        await self.sleep(2) 
         await super().start()
 
 
@@ -93,7 +93,7 @@ class SleepClimateControl(BaseClimateControl):
         if abs(diff) < self.variability_threshold:
             self.dev_log("Within variability threshold")
             await self.stop_cooling()
-            await self.set_bedroom_heater(OnOff.ON)
+            await self.set_bedroom_heater(OnOff.OFF)
             return
 
         if diff > 0:
@@ -177,6 +177,9 @@ class SleepClimateControl(BaseClimateControl):
             if self.alarm_dt is None and not self.already_tried_getting_alarm:
                 await self.update_alarm_dt()
                 self.already_tried_getting_alarm = True
+                return self.alarm_dt
+            
+            if self.alarm_dt is not None:
                 return self.alarm_dt
 
         if self.is_weekend():

@@ -157,6 +157,8 @@ class BaseClimateControl(Support):
         self.dev_log("Starting climate control")
 
         try:
+            # Cleans up any heater state from sleep climate control
+            await self.set_bedroom_heater(OnOff.OFF)
             await self.base_loop()
 
         except asyncio.CancelledError: 
@@ -276,7 +278,6 @@ class BaseClimateControl(Support):
             self.is_any_fans_active = False
 
         await self.set_ac_ext_fan(OnOff.OFF)
-        await self.set_bedroom_heater(OnOff.OFF)
 
     
     async def update_fan_runtime(self):
